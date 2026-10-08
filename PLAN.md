@@ -1,32 +1,32 @@
-# Migration plan: Guitar MIDI Strummer, desktop to web
+# Guitar MIDI Strummer: plan and status
 
 Source: `C:\www\midi\midi.py` (Python, Tkinter, mido, pygame.midi).
 Target: this repository, a static web app (HTML, CSS, TypeScript bundled by Vite).
 
-Status legend: `[ ]` to do, `[x]` done. This file is updated as the work advances.
+Status legend: `[ ]` to do, `[~]` partly done (code exists, not finished or not wired to the page),
+`[x]` done. Updated 2026-10-08.
 
 ## Decisions
 
 | Topic | Decision |
 |---|---|
 | Stack | Static site. HTML + CSS + TypeScript modules, bundled by Vite. No React, no server. |
-| Scope | Strict port of `midi.py`: same features, same rules, same labels. Improvements come later. |
-| Language | French only, same texts as the desktop app. |
-| Git | Local commits after each phase. Remote `origin` is set, nothing is pushed. |
+| Scope | Port of `midi.py` first (done). Improvements come after, in the phases below. |
+| Language | French for the interface, same texts as the desktop app. |
+| Git | Commits per phase. Remote `origin` = `github.com/gorkamorka13/midiweb`. Nothing pushed yet. |
 | MIDI read/write | Own small module modelled on mido 1.3.3, so results match the Python version exactly. |
-| Sound | `smplr` 1.1.0 `Soundfont` instruments on Web Audio (nylon guitar, steel guitar, grand piano). |
+| Sound | `smplr` 1.1.0 `Soundfont` instruments on Web Audio, samples served from `public/soundfonts`. |
 | Tests | Vitest, against reference data produced by the real `midi.py`. |
+| Deployment | GitHub Pages, built by `.github/workflows/deploy.yml` on push to `main`. |
 
 ## What changes compared with the desktop app
 
 These are forced by the browser, not design choices.
 
 1. **Sound.** The Microsoft GS Wavetable synth is replaced by sampled instruments. The timbre is
-   different. Samples are downloaded on first play from `gleitz.github.io` (smplr default), so
-   the first play needs a network connection.
+   different. The samples are served with the site, so no network request is needed for sound.
 2. **Timing.** The 5 ms thread loop becomes a 10 ms tick that schedules notes 80 ms ahead on the
-   audio clock. Notes land at their exact time; a setting changed during playback is heard about
-   80 ms later.
+   audio clock. A setting changed during playback is heard about 80 ms later.
 3. **Files.** "Parcourir..." opens the browser file picker, and a file can also be dropped on the
    page. "Exporter le MIDI..." downloads the file instead of opening a save dialog.
 4. **Window.** The fixed 752 x 665 window becomes a responsive page. The timeline takes the
@@ -39,96 +39,99 @@ These are forced by the browser, not design choices.
 ## Target layout
 
 ```
-index.html            page structure (same 3 setting groups, now-playing panel, timeline)
-src/guitar.ts         section 1 of midi.py: tables and naming helpers
+index.html            page structure (3 setting groups, now-playing panel, timeline)
+src/guitar.ts         tables and naming helpers (section 1 of midi.py)
 src/midifile.ts       Standard MIDI File reader and writer (mido-compatible)
 src/midicsv.ts        read_midicsv
 src/logic.ts          analyze_input_midi, detect_key, keep_highest_notes, strum_layout,
                       sweep_delay, note_events, generate_processed_midi
 src/player.ts         LivePlayer, driven by an injected clock (testable without audio)
 src/audio.ts          AudioContext, smplr instruments, worker tick
-src/ui/timeline.ts    draw_timeline, playhead, scrolling, click to seek
-src/ui/chord.ts       draw_chord
+src/ui/timeline.ts    timeline drawing, playhead, scrolling, seek
+src/ui/chord.ts       chord diagram
 src/main.ts           GuitarMidiApp: wiring of controls, status, file loading, export
 src/style.css
+public/soundfonts/    instrument samples (MusyngKite, mp3 and ogg)
 tools/make_fixtures.py   builds test MIDI files and reference outputs with the real midi.py
 tests/                   Vitest suites and fixtures
+.github/workflows/deploy.yml   build and GitHub Pages deployment
 ```
 
-## Phases
+## Completed work
 
-### Phase 0: repository and tooling
-- [x] Create `C:\www\midiweb`, `git init`, remote `origin` = `github.com/gorkamorka13/midiweb`.
-- [x] `package.json` with Vite, TypeScript, Vitest, smplr.
-- [x] Check the smplr API in the installed package (load, scheduled start, stop).
-- [x] `tsconfig.json`, `vite.config.ts`, `.gitignore`. Commit.
+### Migration (phases 0 to 7): done
+- [x] Repository, tooling, reference fixtures from `midi.py`, pure logic, playback engine,
+      audio adapter, interface, browser verification, README (French).
+- [x] Pause / Reprendre button (`LivePlayer.pause` / `resume`, `tests/pause.test.ts`).
+- [x] Key dropdown lists all 24 keys (12 major, 12 minor), not four.
+- [x] Sample files committed under `public/soundfonts` and loaded from the site's own base URL
+      (`src/audio.ts`), so sound no longer depends on `gleitz.github.io` at run time.
+- [x] GitHub Pages workflow (`.github/workflows/deploy.yml`): `npm ci`, `npm run build`, publish
+      `dist/`. Added on branch `add-pages-workflow`; not yet merged to `main`, so it has not run.
 
-### Phase 1: reference data from the Python app
-- [x] `tools/make_fixtures.py`: imports `midi.py`, writes synthetic test files (multi-track, tempo
-      changes, drums, overlapping and unterminated notes, chords, MIDICSV, invalid files).
-- [x] For each file, dump: notes, detected key, "Mélodie seule" result, exported MIDI bytes for
-      several setting combinations.
-- [x] Dump `LivePlayer` runs under a simulated clock (scripted setting changes and seeks) as the
-      exact sequence of note-on / note-off messages.
-- [x] Optional local-only fixtures from real MIDI files (not committed).
+### Status on 2026-10-08
+- `npm test`: 122 tests pass.
+- `npm run build`: was failing (three type errors: `Timeline.setSeekable` renamed, `LiveParams`
+  missing `mono` / `chromatic` / `loop`, `Playback` missing its position and duration). Fixed in
+  `src/main.ts` with defaults for the three new settings. Not committed yet.
 
-### Phase 2: pure logic
-- [x] `guitar.ts`, `midifile.ts`, `midicsv.ts`, `logic.ts`.
-- [x] Tests: notes, key, melody filter and exported bytes identical to the Python references.
-      Commit.
+## Next: publish and check
 
-### Phase 3: playback engine
-- [x] `player.ts`: port of `LivePlayer._run` as a `tick(now)` step function.
-- [x] Test: same message sequence as the Python engine under the simulated clock. Commit.
+- [ ] **Licence of the samples.** The repo has no licence file for `public/soundfonts`. Find the
+      terms of the MusyngKite set from `gleitz/midi-js-soundfonts` and record them in the README
+      (attribution, or a NOTICE file) before the site goes public.
+- [ ] **Merge and publish.** Merge `add-pages-workflow` into `main`, check the run in GitHub
+      Actions, enable Pages (source: GitHub Actions), open the published URL and load a file.
+- [ ] **Check the published site.** Confirm the samples load from the published URL (not only
+      locally) and that the README's description of the samples is correct.
+- [ ] **Other browsers.** Test Firefox, Safari and a phone. iOS is the strict one for audio: check
+      that the first Écouter press unlocks sound and that the timeline works with touch.
+- [ ] **Sound quality.** Timbre and volume balance need a listening test by the owner.
+- [ ] **Keep the docs in step.** `README.md` (line 83 says samples come from `gleitz.github.io`,
+      line 91 says four keys) and this file must match the code.
 
-### Phase 4: audio
-- [x] `audio.ts`: output adapter on smplr (one voice per sounding pitch, scheduled start/stop),
-      instrument loading with status feedback, worker-driven tick.
+## Next: finish the features already in the code
 
-### Phase 5: interface
-- [x] `index.html`, `style.css`: the three setting groups, now-playing panel, timeline,
-      transport, status line and export button.
-- [x] `ui/chord.ts`, `ui/timeline.ts` on canvas.
-- [x] `main.ts`: all handlers of `GuitarMidiApp` (file, key, transpose, mode, melody, notation,
-      instrument, strums, speed, sweep, play/stop, seek, export). Commit.
+These have an engine or drawing part but no control on the page yet.
 
-### Phase 6: verification in the browser
-- [x] `npm run build` and `npm test` pass.
-- [x] Load a file, play, change every setting during playback, seek, export, and re-import the
-      export in the Python app's reader to confirm it is valid.
-- [x] Fix what the run shows. Commit.
+- [~] **Loop a section.** `LivePlayer` loops, `Timeline.setLoop` draws the bounds. Missing: a way
+      to set the start and end on the timeline, and a clear button. Wire `loop` in `readLiveParams`.
+- [~] **Better chord for out-of-key notes.** `harmonyMap(scale, chromatic)` and `FULL_HARMONY`
+      exist. Missing: a checkbox in the page; `chromatic` is `false` for now.
+- [~] **Volume control.** `AudioOutput.setVolume` exists. Missing: a slider in the page.
+- [~] **Choose the melody track.** `listParts` (in `logic.ts`) lists the tracks. Not used by the
+      page. Missing: a track picker after a file is loaded, and the melody filter applied to the
+      chosen track only. This is the biggest gain for multi-track files.
+- [~] **Correct the detected key by hand.** The target key can already be chosen (dropdown), and
+      the shift is computed from the detected key. Missing: a way to set the source key when the
+      detection is wrong.
+- [ ] **Seek and start from any position while stopped.** Seeking is only enabled during playback
+      or pause (`setSeekEnabled` in `src/main.ts`). `Playback` takes a start position, but the page
+      always passes 0.
+- [ ] **One chord at a time in "Accord 6 Cordes".** Simultaneous notes each trigger their own chord
+      and overlap. `mono` only covers single-note playback, so this needs a separate rule.
 
-### Phase 7: documentation
-- [x] `README.md` (French): usage, development commands, differences with the desktop app.
-- [x] Final state of this plan. Commit.
+## Next: new improvements
 
-## Result
-
-All phases are done. Verified on 2026-10-08:
-
-- `npm test`: 117 tests pass. Notes, detected key, melody filter, exported MIDI bytes and the
-  playback engine's message sequence are identical to the Python app, on the synthetic fixtures
-  and on three real MIDI files (local fixtures, not committed).
-- `npm run build`: type-check and production build pass (about 54 KB of JavaScript).
-- Headless Chrome run against the dev server and the production build: file loading, error
-  dialogs, playback, every setting changed during playback, seek buttons, click on the timeline,
-  stop, play to the end, export, narrow screen. No console error. Notes reach Web Audio 54 to
-  80 ms ahead of their time, none late. The file exported from the page is byte-identical to the
-  Python export with the same settings.
-
-Not verified: the sound itself was not listened to (the run was headless). The timbre and the
-volume balance need a human ear.
-
-## After the migration
-
-- [x] **Pause button** (2026-10-08). `LivePlayer.pause` / `resume`, a Pause / Reprendre button next
-      to Écouter. Pausing cuts the sound at once and keeps the position that was being heard;
-      settings and seeks still work while paused and are heard on resume. The engine's behaviour
-      without pause is unchanged (the comparison with the Python engine still passes), and the
-      pause itself is covered by `tests/pause.test.ts` and a headless Chrome run.
+- [ ] **Keyboard shortcuts.** Space for pause, arrows for seek.
+- [ ] **Remember settings between visits.** Notation, instrument, speed and the other controls
+      reset on every load. Store them in `localStorage`, with a fallback if storage is blocked.
+- [ ] **Report an empty file.** An empty file is replaced by a fallback note, as in the desktop app
+      (`src/logic.ts`, around line 97). Show a message instead, and keep the fallback behaviour
+      only if a test requires it.
 
 ## Out of scope for this migration
 
-Known limits of the desktop app that are kept as they are: four keys only, seeking
-only during playback, export does not record live changes, empty file replaced by a fallback
-note, type 2 files rejected. Publishing (push, GitHub Pages) is left to the repository owner.
+Known limits of the desktop app that are kept as they are for now: export does not record live
+changes, type 2 MIDI files are rejected, and SMPTE-timed files are rejected.
+
+## Result of the migration checks (2026-10-08)
+
+- Notes, detected key, melody filter, exported MIDI bytes and the playback engine's message
+  sequence are identical to the Python app, on the synthetic fixtures and on three real MIDI files
+  (local fixtures, not committed).
+- Headless Chrome run against the dev server and the production build: file loading, error dialogs,
+  playback, every setting changed during playback, seek buttons, click on the timeline, stop, play to
+  the end, export, narrow screen. No console error. The file exported from the page is byte-identical
+  to the Python export with the same settings.
+- The sound itself was not listened to (the run was headless).
