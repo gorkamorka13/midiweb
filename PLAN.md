@@ -13,7 +13,7 @@ Status legend: `[ ]` to do, `[~]` partly done (code exists, not finished or not 
 | Stack | Static site. HTML + CSS + TypeScript modules, bundled by Vite. No React, no server. |
 | Scope | Port of `midi.py` first (done). Improvements come after, in the phases below. |
 | Language | French for the interface, same texts as the desktop app. |
-| Git | Commits per phase. Remote `origin` = `github.com/gorkamorka13/midiweb`. Nothing pushed yet. |
+| Git | Commits per phase. Remote `origin` = `github.com/gorkamorka13/midiweb`. |
 | MIDI read/write | Own small module modelled on mido 1.3.3, so results match the Python version exactly. |
 | Sound | `smplr` 1.1.0 `Soundfont` instruments on Web Audio, samples served from `public/soundfonts`. |
 | Tests | Vitest, against reference data produced by the real `midi.py`. |
@@ -67,63 +67,59 @@ tests/                   Vitest suites and fixtures
 - [x] Sample files committed under `public/soundfonts` and loaded from the site's own base URL
       (`src/audio.ts`), so sound no longer depends on `gleitz.github.io` at run time.
 - [x] GitHub Pages workflow (`.github/workflows/deploy.yml`): `npm ci`, `npm run build`, publish
-      `dist/`. Added on branch `add-pages-workflow`; not yet merged to `main`, so it has not run.
+      `dist/`. Published at <https://gorkamorka13.github.io/midiweb/>; the owner confirmed it works.
+
+### Improvements, first batch (2026-10-08): done
+
+All wired in `src/main.ts` and `index.html`; the engine parts already existed.
+
+- [x] **Choose the tracks.** A "Pistes jouées" list (one box per track and channel, from
+      `listParts`) appears when a file has several. Only ticked tracks are played and exported;
+      the others stay on the timeline in grey. Changing the choice acts on the running playback.
+      The key is detected on the whole file, so it does not move with the choice.
+- [x] **Correct the detected key by hand.** "Tonalité du morceau" is a list: the detected key first,
+      then the 24 keys. Reset to the detected key when a new file is loaded.
+- [x] **Seek and start from any position while stopped.** The seek buttons and the timeline move a
+      start cursor; Écouter starts there, Arrêter returns there.
+- [x] **Loop a section.** A and B set the bounds at the current position, Effacer removes them.
+- [x] **Better chord for out-of-key notes.** Checkbox, applied to playback, timeline and export.
+- [x] **One note or one chord at a time.** Checkbox wired to `mono`, which applies in both modes
+      (the earlier note here saying it only covered single notes was wrong). Applied to export too.
+- [x] **Volume control.** Slider, 0 to 100 %.
+- [x] **Keyboard shortcuts.** Space: play, then pause / resume. Left / right: seek 5 s. Home: start.
+- [x] **Remember settings between visits.** `localStorage`, key `midiweb.settings`; blocked or
+      unreadable storage falls back to the defaults. The file, the track choice, the corrected key
+      and the loop are not stored.
+- [x] **Report an empty file.** The page shows a message and loads nothing. `analyzeInputMidi`
+      keeps the desktop fallback note because the reference tests compare it with `midi.py`; the
+      page now calls `readMidiInput` instead.
+- [x] **Licence of the samples.** MusyngKite is CC BY-SA 3.0 (stated in the README of
+      `gleitz/midi-js-soundfonts`); recorded in the README, section "Sons : origine et licence".
+- [x] **Docs in step.** README updated for the samples' origin, the 24 keys and the new controls.
 
 ### Status on 2026-10-08
-- `npm test`: 122 tests pass.
-- `npm run build`: was failing (three type errors: `Timeline.setSeekable` renamed, `LiveParams`
-  missing `mono` / `chromatic` / `loop`, `Playback` missing its position and duration). Fixed in
-  `src/main.ts` with defaults for the three new settings. Not committed yet.
+- `npm test`: 130 tests pass (8 new ones in `tests/options.test.ts`: loop, one note at a time,
+  out-of-key chords, track change). `npm run build`: passes.
+- Headless Chrome run against the dev server: every item above exercised, no console error.
+- Not covered by a unit test: the wiring in `src/main.ts` (it is only checked in the browser).
 
-## Next: publish and check
+## Next: check
 
-- [ ] **Licence of the samples.** The repo has no licence file for `public/soundfonts`. Find the
-      terms of the MusyngKite set from `gleitz/midi-js-soundfonts` and record them in the README
-      (attribution, or a NOTICE file) before the site goes public.
-- [ ] **Merge and publish.** Merge `add-pages-workflow` into `main`, check the run in GitHub
-      Actions, enable Pages (source: GitHub Actions), open the published URL and load a file.
-- [ ] **Check the published site.** Confirm the samples load from the published URL (not only
-      locally) and that the README's description of the samples is correct.
 - [ ] **Other browsers.** Test Firefox, Safari and a phone. iOS is the strict one for audio: check
       that the first Écouter press unlocks sound and that the timeline works with touch.
-- [ ] **Sound quality.** Timbre and volume balance need a listening test by the owner.
-- [ ] **Keep the docs in step.** `README.md` (line 83 says samples come from `gleitz.github.io`,
-      line 91 says four keys) and this file must match the code.
+- [ ] **Sound quality.** Timbre and volume balance need a listening test by the owner. The new
+      options (one chord at a time, out-of-key chords, loop) were checked for behaviour, not by ear.
 
-## Next: finish the features already in the code
+## Next: ideas
 
-These have an engine or drawing part but no control on the page yet.
-
-- [~] **Loop a section.** `LivePlayer` loops, `Timeline.setLoop` draws the bounds. Missing: a way
-      to set the start and end on the timeline, and a clear button. Wire `loop` in `readLiveParams`.
-- [~] **Better chord for out-of-key notes.** `harmonyMap(scale, chromatic)` and `FULL_HARMONY`
-      exist. Missing: a checkbox in the page; `chromatic` is `false` for now.
-- [~] **Volume control.** `AudioOutput.setVolume` exists. Missing: a slider in the page.
-- [~] **Choose the melody track.** `listParts` (in `logic.ts`) lists the tracks. Not used by the
-      page. Missing: a track picker after a file is loaded, and the melody filter applied to the
-      chosen track only. This is the biggest gain for multi-track files.
-- [~] **Correct the detected key by hand.** The target key can already be chosen (dropdown), and
-      the shift is computed from the detected key. Missing: a way to set the source key when the
-      detection is wrong.
-- [ ] **Seek and start from any position while stopped.** Seeking is only enabled during playback
-      or pause (`setSeekEnabled` in `src/main.ts`). `Playback` takes a start position, but the page
-      always passes 0.
-- [ ] **One chord at a time in "Accord 6 Cordes".** Simultaneous notes each trigger their own chord
-      and overlap. `mono` only covers single-note playback, so this needs a separate rule.
-
-## Next: new improvements
-
-- [ ] **Keyboard shortcuts.** Space for pause, arrows for seek.
-- [ ] **Remember settings between visits.** Notation, instrument, speed and the other controls
-      reset on every load. Store them in `localStorage`, with a fallback if storage is blocked.
-- [ ] **Report an empty file.** An empty file is replaced by a fallback note, as in the desktop app
-      (`src/logic.ts`, around line 97). Show a message instead, and keep the fallback behaviour
-      only if a test requires it.
+- [ ] **Set the loop by dragging on the timeline**, instead of A / B at the current position.
+- [ ] **Guess the melody track** when a file has several (highest average pitch, single notes) and
+      tick only that one by default.
 
 ## Out of scope for this migration
 
 Known limits of the desktop app that are kept as they are for now: export does not record live
-changes, type 2 MIDI files are rejected, and SMPTE-timed files are rejected.
+changes (nor the loop), type 2 MIDI files are rejected, and SMPTE-timed files are rejected.
 
 ## Result of the migration checks (2026-10-08)
 

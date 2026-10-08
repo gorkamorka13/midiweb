@@ -20,6 +20,15 @@
               <button id="btn-browse" type="button">Parcourir...</button>
               <input id="file-input" type="file" accept=".mid,.midi,.csv,.txt" hidden />
             </div>
+            <!-- Pistes du fichier : seules les pistes cochées sont jouées et exportées -->
+            <details id="tracks" class="tracks" hidden>
+              <summary id="lbl-tracks"></summary>
+              <div id="tracks-list" class="tracks-list"></div>
+              <div class="tracks-actions">
+                <button id="btn-tracks-all" type="button">Toutes</button>
+                <button id="btn-tracks-none" type="button">Aucune</button>
+              </div>
+            </details>
           </fieldset>
 
           <!-- 2. Paramètres Musicaux -->
@@ -29,8 +38,11 @@
               <label for="cb-scale">Tonalité globale :</label>
               <select id="cb-scale"></select>
 
-              <span>Tonalité du morceau :</span>
-              <span id="lbl-file-key" class="muted value"></span>
+              <label for="cb-file-key">Tonalité du morceau :</label>
+              <span class="file-key value">
+                <span id="lbl-file-key" class="muted"></span>
+                <select id="cb-file-key"></select>
+              </span>
 
               <span>Transposition (demi-tons) :</span>
               <span class="transpose value">
@@ -48,6 +60,16 @@
               <label class="wide">
                 <input id="chk-melody" type="checkbox" />
                 Mélodie seule (note la plus aiguë des notes simultanées)
+              </label>
+
+              <label class="wide">
+                <input id="chk-mono" type="checkbox" />
+                Une seule note ou un seul accord à la fois (le nouveau coupe le précédent)
+              </label>
+
+              <label class="wide">
+                <input id="chk-chromatic" type="checkbox" />
+                Accord adapté aux notes hors tonalité (sinon l'accord de repli)
               </label>
 
               <span>Notation des notes :</span>
@@ -79,6 +101,12 @@
                 <input id="scale-strum-speed" type="range" min="5" max="40" step="1" value="15" />
                 <output id="out-strum-speed" for="scale-strum-speed"></output>
               </span>
+
+              <label for="scale-volume">Volume :</label>
+              <span class="slider value">
+                <input id="scale-volume" type="range" min="0" max="100" step="1" value="100" />
+                <output id="out-volume" for="scale-volume"></output>
+              </span>
             </div>
           </fieldset>
         </div>
@@ -95,7 +123,7 @@
 
       <!-- 5. Frise du morceau : notes, accords, position de lecture -->
       <fieldset class="song">
-        <legend>Morceau (cliquer pour se déplacer pendant la lecture)</legend>
+        <legend>Morceau (cliquer pour se déplacer)</legend>
         <div id="tl-scroll" class="tl-scroll">
           <div id="tl-spacer" class="tl-spacer">
             <canvas id="cv-timeline" role="img" aria-label="Frise du morceau"></canvas>
@@ -111,6 +139,16 @@
           <button id="btn-forward" type="button"></button>
           <span id="lbl-position" class="position"></span>
         </div>
+
+        <!-- Boucle : ses bornes sont posées à la position courante -->
+        <div class="loop">
+          <span>Boucle :</span>
+          <button id="btn-loop-start" type="button" title="Début de la boucle à la position courante">A</button>
+          <button id="btn-loop-end" type="button" title="Fin de la boucle à la position courante">B</button>
+          <span id="lbl-loop" class="muted"></span>
+          <button id="btn-loop-clear" type="button">Effacer</button>
+        </div>
+        <div class="muted hint">Clavier : Espace = écouter / pause, ← → = reculer / avancer, Début = retour au début.</div>
       </fieldset>
 
       <!-- 7. Statut à gauche, export à droite -->

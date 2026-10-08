@@ -15,16 +15,39 @@ machine.
 
 1. Cliquer sur **Parcourir...** (ou déposer un fichier sur la page) et choisir un fichier MIDI
    (`.mid`, `.midi`) ou MIDICSV (`.csv`, `.txt`).
-2. Régler la tonalité, le mode, le strumming et la vitesse (modifiables aussi en cours de lecture).
-3. Cliquer sur **Écouter**. À la première écoute, le son de l'instrument est téléchargé, ce qui
-   demande une connexion.
-4. Pendant la lecture : changer les réglages, se déplacer avec **Début**, **-5 s**, **+5 s** ou en
-   cliquant sur la frise.
-5. **Pause** suspend la lecture et coupe le son ; **Reprendre** repart du même endroit. En pause,
+2. Si le fichier a plusieurs pistes, ouvrir **Pistes jouées** et ne cocher que celles à jouer
+   (la mélodie, par exemple). Les notes des pistes décochées restent dessinées en gris sur la frise.
+3. Régler la tonalité, le mode, le strumming, la vitesse et le volume (modifiables aussi en cours
+   de lecture). Les réglages sont retenus par le navigateur d'une visite à l'autre.
+4. Cliquer sur **Écouter**. À la première écoute, le son de l'instrument est chargé depuis le site.
+5. Se déplacer avec **Début**, **-5 s**, **+5 s** ou en cliquant sur la frise, pendant la lecture
+   comme à l'arrêt : à l'arrêt, on choisit ainsi l'endroit d'où partira la lecture.
+6. **Pause** suspend la lecture et coupe le son ; **Reprendre** repart du même endroit. En pause,
    l'accord reste affiché, les réglages et les déplacements restent possibles et s'entendent à la
    reprise.
-6. **Arrêter** stoppe la lecture (la relancer repart du début). **Exporter le MIDI...** télécharge
-   le morceau entier avec les réglages affichés.
+7. **Arrêter** stoppe la lecture et revient à la position de départ. **Exporter le MIDI...**
+   télécharge le morceau entier (pistes cochées) avec les réglages affichés.
+
+### Réglages propres à la version web
+
+- **Tonalité du morceau** : la tonalité détectée est proposée ; si elle est fausse, en choisir une
+  autre dans la liste. Le morceau est transposé de cette tonalité vers la **Tonalité globale**.
+- **Une seule note ou un seul accord à la fois** : une nouvelle note coupe la précédente, ce qui
+  évite que les accords de notes qui se chevauchent sonnent ensemble.
+- **Accord adapté aux notes hors tonalité** : une note étrangère à la gamme reçoit un accord qui
+  la contient, au lieu de l'accord de repli (La mineur).
+- **Boucle** : **A** pose le début et **B** la fin à la position courante ; la lecture répète ce
+  passage. **Effacer** retire la boucle.
+
+### Clavier
+
+| Touche | Effet |
+|---|---|
+| Espace | Écouter, puis pause et reprise. |
+| ← et → | Reculer et avancer de 5 s. |
+| Début (Home) | Revenir au début. |
+
+Les flèches gardent leur rôle habituel quand un curseur, un champ ou une liste a le focus.
 
 ## Développement
 
@@ -80,14 +103,27 @@ python tools/make_fixtures.py --local chemin/vers/morceau.mid
 | Sujet | Application de bureau | Version web |
 |---|---|---|
 | Son | Synthétiseur MIDI de Windows. | Instruments échantillonnés joués par Web Audio (bibliothèque `smplr`) : le timbre est différent. |
-| Échantillons | Aucun téléchargement. | Téléchargés à la première écoute depuis `gleitz.github.io` (jeu MusyngKite de <https://github.com/gleitz/midi-js-soundfonts>). |
+| Échantillons | Aucun téléchargement. | Servis avec le site (`public/soundfonts`) et chargés à la première écoute de chaque instrument. |
 | Réglages en lecture | Relus toutes les 50 ms. | Entendus environ 80 ms après le changement : le moteur programme les notes avec 80 ms d'avance pour les placer à leur heure exacte. |
 | Fichiers | Boîtes de dialogue de Windows. | Sélecteur de fichier du navigateur ou dépôt sur la page ; l'export est téléchargé sous le nom `<fichier>_strum.mid`. |
 | Fenêtre | Taille fixe. | Page qui s'adapte à la largeur de l'écran. |
 | Curseurs | Sans valeur affichée. | La valeur est écrite à côté du curseur. |
 | Fichiers MIDI à division SMPTE | Lus avec des temps faux. | Refusés avec un message. |
 | Pause | Absente : Arrêter puis Écouter repart du début. | Bouton **Pause / Reprendre**. |
+| Tonalités | Quatre. | Les 24 tonalités majeures et mineures. |
+| Déplacement | Seulement pendant la lecture. | Aussi à l'arrêt : la lecture part de la position choisie. |
+| Pistes | Toutes les pistes sont jouées ensemble. | Choix des pistes jouées. |
+| Fichier sans note | Remplacé par une note de secours. | Refusé avec un message. |
+| Boucle, volume, raccourcis clavier, réglages retenus | Absents. | Présents. |
 
-Les autres limites connues de l'application de bureau sont conservées : quatre tonalités,
-déplacement seulement pendant la lecture (ou en pause), export avec un seul jeu de réglages,
-fichiers de type 2 non pris en charge.
+Les autres limites connues de l'application de bureau sont conservées : export avec un seul jeu de
+réglages, fichiers de type 2 non pris en charge.
+
+## Sons : origine et licence
+
+Les échantillons de `public/soundfonts/MusyngKite` (guitare nylon, guitare acier, piano) viennent
+de <https://github.com/gleitz/midi-js-soundfonts>, qui les a produits à partir de la banque de sons
+Musyng Kite. Ils sont distribués sous licence
+[Creative Commons Attribution - Partage dans les mêmes conditions 3.0](https://creativecommons.org/licenses/by-sa/3.0/deed.fr)
+(CC BY-SA 3.0), sans modification. Cette licence ne couvre que ces fichiers, pas le code de
+l'application.

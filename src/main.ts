@@ -10,8 +10,9 @@ import {
   MAX_STRUMS,
   MAX_TRANSPOSE,
   SCALES,
-  SCALE_HARMONY,
+  SCALE_ROOTS,
   SEEK_STEP,
+  harmonyMap,
   keyName,
   mod,
   noteName,
@@ -23,7 +24,16 @@ import {
   type Mode,
   type Notation,
 } from "./guitar";
-import { analyzeInputMidi, detectKey, generateProcessedMidi, keepHighestNotes, type Note } from "./logic";
+import {
+  detectKey,
+  generateProcessedMidi,
+  keepHighestNotes,
+  listParts,
+  readMidiInput,
+  type MidiInput,
+  type Note,
+  type Part,
+} from "./logic";
 import type { LiveParams } from "./player";
 import { drawChord } from "./ui/chord";
 import { Timeline } from "./ui/timeline";
@@ -34,14 +44,20 @@ function $<T extends HTMLElement>(id: string): T {
 
 const lblFile = $("lbl-file");
 const fileInput = $<HTMLInputElement>("file-input");
+const tracksBox = $<HTMLDetailsElement>("tracks");
+const tracksList = $("tracks-list");
 const cbScale = $<HTMLSelectElement>("cb-scale");
 const lblFileKey = $("lbl-file-key");
+const cbFileKey = $<HTMLSelectElement>("cb-file-key");
 const lblTranspose = $("lbl-transpose");
 const chkMelody = $<HTMLInputElement>("chk-melody");
+const chkMono = $<HTMLInputElement>("chk-mono");
+const chkChromatic = $<HTMLInputElement>("chk-chromatic");
 const cbInstrument = $<HTMLSelectElement>("cb-instrument");
 const spinStrums = $<HTMLInputElement>("spin-strums");
 const scaleSpeed = $<HTMLInputElement>("scale-speed");
 const scaleStrumSpeed = $<HTMLInputElement>("scale-strum-speed");
+const scaleVolume = $<HTMLInputElement>("scale-volume");
 const lblChord = $("lbl-chord");
 const lblChordSub = $("lbl-chord-sub");
 const cvChord = $<HTMLCanvasElement>("cv-chord");
@@ -51,7 +67,12 @@ const btnPause = $<HTMLButtonElement>("btn-pause");
 const btnStart = $<HTMLButtonElement>("btn-start");
 const btnBack = $<HTMLButtonElement>("btn-back");
 const btnForward = $<HTMLButtonElement>("btn-forward");
-const seekButtons = [btnStart, btnBack, btnForward]; // grisés à l'arrêt : sans effet hors lecture
+const seekButtons = [btnStart, btnBack, btnForward]; // grisés tant qu'aucun fichier n'est chargé
+const btnLoopStart = $<HTMLButtonElement>("btn-loop-start");
+const btnLoopEnd = $<HTMLButtonElement>("btn-loop-end");
+const btnLoopClear = $<HTMLButtonElement>("btn-loop-clear");
+const lblLoop = $("lbl-loop");
+const tlScroll = $("tl-scroll");
 const lblPosition = $("lbl-position");
 const lblStatus = $("lbl-status");
 const dialog = $<HTMLDialogElement>("dlg");
@@ -65,14 +86,23 @@ let frameId = 0;
 let transpose = 0;
 let songDuration = 0.0;
 let inputFileName: string | null = null;
-let inputNotes: Note[] | null = null;
-let fileKey: Key | null = null; // tonalité détectée dans le fichier
+let fileNotes: Note[] = []; // toutes les notes du fichier
+let parts: Part[] = [];
+let enabledParts = new Set<string>(); // pistes cochées
+let inputNotes: Note[] | null = null; // notes des pistes cochées : celles qui sont jouées et exportées
+let detectedKey: Key | null = null; // tonalité détectée dans le fichier
+let cursor = 0.0; // position (s) d'où part la lecture ; déplaçable à l'arrêt
+let loopStart: number | null = null; // bornes de la boucle (s)
+let loopEnd: number | null = null;
 let melodySaved: boolean | null = null; // état de « Mélodie seule » avant le passage en Simple Corde
 let lastStrums = 2;
 let shownPosition = -1; // dernière position donnée à la frise
 
-const timeline = new Timeline($("tl-scroll"), $("tl-spacer"), $<HTMLCanvasElement>("cv-timeline"), (seconds) =>
-  playback?.seekTo(seconds),
+const STORAGE_KEY = "midiweb.settings";
+const MIN_LOOP = 0.1; // durée (s) en dessous de laquelle une boucle n'est pas jouée
+
+const timeline = new Timeline(tlScroll, $("tl-spacer"), $<HTMLCanvasElement>("cv-timeline"), (seconds) =>
+  seekTo(seconds, false),
 );
 
 function checked(name: string): string {
@@ -108,6 +138,13 @@ function scaleKey(): string {
 function changeTranspose(delta: number): void {
   transpose = Math.max(-MAX_TRANSPOSE, Math.min(MAX_TRANSPOSE, transpose + delta));
   onHarmonyChange();
+  saveSettings();
+}
+
+/** Tonalité du morceau : celle qui a été détectée, sauf si une autre est choisie dans la liste. */
+function fileKey(): Key | null {
+  if (detectedKey === null) return null;
+  return cbFileKey.value ? SCALE_ROOTS[cbFileKey.value] : detectedKey;
 }
 
 function updateTransposeLabel(): void {
@@ -117,17 +154,31 @@ function updateTransposeLabel(): void {
 
 /** Demi-tons ajoutés aux notes du fichier pour le jouer dans la tonalité choisie. */
 function keyShift(): number {
-  return fileKey ? shiftToKey(fileKey, scaleKey()) : 0;
+  const key = fileKey();
+  return key ? shiftToKey(key, scaleKey()) : 0;
 }
 
 function updateFileKeyLabel(): void {
-  if (fileKey === null) {
+  if (detectedKey === null) {
     lblFileKey.textContent = "aucun fichier";
     return;
   }
   const shift = keyShift();
-  const moved = shift ? `transposé de ${signed(shift)} demi-tons` : "non transposé";
-  lblFileKey.textContent = `${keyName(fileKey[0], fileKey[1], notation())} (${moved})`;
+  lblFileKey.textContent = shift ? `transposé de ${signed(shift)} demi-tons` : "non transposé";
+}
+
+/** Liste des tonalités du morceau : la tonalité détectée d'abord, puis les 24 pour la corriger. */
+function fillFileKeys(): void {
+  const selected = cbFileKey.value;
+  const auto = detectedKey
+    ? `Détectée : ${keyName(detectedKey[0], detectedKey[1], notation())}`
+    : "Détectée automatiquement";
+  cbFileKey.replaceChildren(
+    new Option(auto, ""),
+    ...SCALES.map((k) => new Option(transposedKeyName(k, 0, notation()), k)),
+  );
+  cbFileKey.value = selected;
+  cbFileKey.disabled = detectedKey === null;
 }
 
 function onHarmonyChange(): void {
@@ -162,8 +213,49 @@ function fillScales(): void {
 /** Réécrit tout ce qui affiche un nom de note ; la tonalité choisie reste la même. */
 function onNotationChange(): void {
   fillScales();
+  fillFileKeys();
   onHarmonyChange();
   if (!playback) drawChord(cvChord, null, null, notation()); // noms des cordes ; en lecture, `pollPlayer` redessine
+}
+
+// --- Pistes ------------------------------------------------------------------
+
+const partId = ({ track, channel }: { track: number; channel: number }) => `${track}:${channel}`;
+
+/** Une case par piste du fichier ; la liste n'apparaît que s'il y en a plusieurs. */
+function fillTracks(): void {
+  tracksBox.hidden = parts.length < 2;
+  tracksList.replaceChildren(
+    ...parts.map((part) => {
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = partId(part);
+      box.checked = enabledParts.has(box.value);
+      const name = part.name || `Piste ${part.track + 1}`;
+      label.append(box, ` ${name} (canal ${part.channel + 1}, ${part.count} notes)`);
+      return label;
+    }),
+  );
+}
+
+function fileStatus(): string {
+  return `${inputNotes?.length ?? 0} notes détectées | Durée totale : ${songDuration.toFixed(2)}s`;
+}
+
+/** Les pistes cochées ont changé : elles seules sont jouées, y compris par la lecture en cours. */
+function onTracksChange(): void {
+  inputNotes = fileNotes.filter((n) => enabledParts.has(partId(n)));
+  $("lbl-tracks").textContent = `Pistes jouées : ${enabledParts.size} sur ${parts.length}`;
+  playback?.setNotes(inputNotes);
+  if (!playback && !starting) lblStatus.textContent = fileStatus();
+  drawTimeline();
+}
+
+function setAllTracks(enabled: boolean): void {
+  enabledParts = new Set(enabled ? parts.map(partId) : []);
+  for (const box of tracksList.querySelectorAll("input")) box.checked = enabled;
+  onTracksChange();
 }
 
 // --- Frise du morceau --------------------------------------------------------
@@ -179,18 +271,19 @@ function drawTimeline(): void {
   // en Simple Corde, la note, écrite comme l'accord qu'elle porte dans la tonalité (Mi -> Mim),
   // ou seule si elle est hors tonalité
   const chords = mode() === "accord";
-  const harmonyMap = SCALE_HARMONY[scaleKey()];
+  const harmony = harmonyMap(scaleKey(), chkChromatic.checked);
   const shift = keyShift();
   const labels = used.map((n) => {
     const pitch = n.pitch + shift;
-    const chord: string | undefined = harmonyMap[mod(pitch, 12)];
+    const chord: string | undefined = harmony[mod(pitch, 12)];
     const name =
       chord || chords
         ? transposedChordName(chord ?? "Lam", transpose, notation())
         : noteName(pitch + transpose, notation());
     return { start: n.start, name };
   });
-  timeline.setModel({ notes: inputNotes, used: new Set(used), labels, chords, duration: songDuration });
+  // Les notes des pistes décochées restent dessinées, grisées
+  timeline.setModel({ notes: fileNotes, used: new Set(used), labels, chords, duration: songDuration });
 }
 
 // --- Ce qui est joué ---------------------------------------------------------
@@ -237,19 +330,74 @@ function showPosition(seconds: number): void {
   lblPosition.textContent = `${formatTime(seconds)} / ${formatTime(songDuration)}`;
 }
 
-function setSeekEnabled(enabled: boolean): void {
-  for (const button of [...seekButtons, btnPause]) button.disabled = !enabled;
-  timeline.setDragSeek(enabled);
+/** Position de départ à l'arrêt : écrite, et marquée sur la frise. */
+function showCursor(follow = false): void {
+  showPosition(cursor);
+  if (inputNotes) timeline.movePlayhead(cursor, follow);
+  else timeline.hidePlayhead();
+}
+
+/** Déplace la lecture en cours ou, à l'arrêt, la position d'où partira la prochaine lecture. */
+function seekTo(seconds: number, follow = true): void {
+  if (playback) {
+    playback.seekTo(seconds);
+  } else if (inputNotes) {
+    cursor = Math.min(songDuration, Math.max(0.0, seconds));
+    showCursor(follow);
+  }
+}
+
+function seekBy(delta: number): void {
+  if (playback) playback.seek(delta);
+  else seekTo(cursor + delta);
+}
+
+/** Boutons actifs selon l'état : déplacement et boucle dès qu'un fichier est chargé, pause en lecture. */
+function updateTransport(): void {
+  const loaded = inputNotes !== null;
+  for (const button of [...seekButtons, btnLoopStart, btnLoopEnd]) button.disabled = !loaded;
+  btnPause.disabled = !playback;
+  timeline.setDragSeek(playback !== null);
+  tlScroll.classList.toggle("seekable", loaded);
 }
 
 function resetDisplay(): void {
   btnPlay.textContent = "▶ Écouter";
   btnPause.textContent = "⏸ Pause";
   shownPosition = -1;
-  setSeekEnabled(false);
-  showPosition(0.0);
+  updateTransport();
+  showCursor();
   clearNowPlaying();
-  timeline.hidePlayhead();
+}
+
+// --- Boucle ------------------------------------------------------------------
+
+/** Boucle jouée : il faut ses deux bornes, assez écartées. */
+function loopRange(): readonly [number, number] | null {
+  if (loopStart === null || loopEnd === null || loopEnd - loopStart < MIN_LOOP) return null;
+  return [loopStart, loopEnd];
+}
+
+function updateLoop(): void {
+  const time = (bound: number | null) => (bound === null ? "…" : formatTime(bound));
+  timeline.setLoop(loopStart, loopEnd);
+  lblLoop.textContent = loopStart === null && loopEnd === null ? "aucune" : `${time(loopStart)} – ${time(loopEnd)}`;
+  btnLoopClear.disabled = loopStart === null && loopEnd === null;
+}
+
+/** Pose une borne de la boucle à la position courante (celle qu'on entend, en lecture). */
+function setLoopBound(end: boolean): void {
+  if (!inputNotes) return;
+  const position = playback ? playback.view().position : cursor;
+  if (end) loopEnd = position;
+  else loopStart = position;
+  if (loopStart !== null && loopEnd !== null && loopStart > loopEnd) [loopStart, loopEnd] = [loopEnd, loopStart];
+  updateLoop();
+}
+
+function clearLoop(): void {
+  loopStart = loopEnd = null;
+  updateLoop();
 }
 
 // --- Fichier, lecture, export ------------------------------------------------
@@ -258,34 +406,66 @@ async function loadFile(file: File): Promise<void> {
   const request = ++fileRequest;
   stopAudio(true);
   timeline.scrollToStart();
-  let notes: Note[];
+  let input: MidiInput;
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (request !== fileRequest) return; // un autre fichier a été choisi entre-temps
-    notes = analyzeInputMidi(file.name, bytes);
+    input = readMidiInput(file.name, bytes);
   } catch (e) {
-    // Fichier illisible : on ne garde pas les notes du fichier précédent
-    inputFileName = null;
-    inputNotes = null;
-    fileKey = null;
-    songDuration = 0.0;
-    lblFile.textContent = "Aucun fichier sélectionné";
-    lblFile.classList.add("muted");
-    lblStatus.textContent = "En attente d'un fichier...";
-    showPosition(0.0);
-    onHarmonyChange();
+    closeFile();
     showMessage("Erreur", `Impossible de lire le fichier : ${errorText(e)}`);
     return;
   }
+  if (!input.notes.length) {
+    closeFile();
+    showMessage(
+      "Fichier sans note",
+      `« ${file.name} » ne contient aucune note jouable (les percussions du canal 10 sont ignorées).`,
+    );
+    return;
+  }
   inputFileName = file.name;
-  inputNotes = notes;
-  fileKey = detectKey(notes);
-  songDuration = Math.max(...notes.map((n) => n.start + n.duration));
+  fileNotes = input.notes;
+  parts = listParts(input);
+  enabledParts = new Set(parts.map(partId));
+  // La tonalité est cherchée dans tout le fichier : elle ne change pas avec les pistes cochées
+  detectedKey = detectKey(fileNotes);
+  songDuration = Math.max(...fileNotes.map((n) => n.start + n.duration));
   lblFile.textContent = file.name;
   lblFile.classList.remove("muted");
-  lblStatus.textContent = `${notes.length} notes détectées | Durée totale : ${songDuration.toFixed(2)}s`;
-  showPosition(0.0);
+  openFile();
+}
+
+/** Remet à zéro ce qui dépend du fichier (position, boucle, tonalité corrigée), puis l'affiche. */
+function openFile(): void {
+  cursor = 0.0;
+  cbFileKey.value = "";
+  fillFileKeys();
+  fillTracks();
+  tracksBox.open = false;
+  clearLoop();
+  onTracksChange();
   onHarmonyChange();
+  updateTransport();
+  showCursor();
+}
+
+/** Fichier illisible ou vide : on ne garde pas les notes du fichier précédent. */
+function closeFile(): void {
+  inputFileName = null;
+  fileNotes = [];
+  parts = [];
+  enabledParts = new Set();
+  detectedKey = null;
+  songDuration = 0.0;
+  lblFile.textContent = "Aucun fichier sélectionné";
+  lblFile.classList.add("muted");
+  openFile();
+  inputNotes = null;
+  lblStatus.textContent = "En attente d'un fichier...";
+  drawTimeline();
+  updateTransport();
+  showCursor();
 }
 
 /** Nombre de strums saisi, borné à 1..MAX_STRUMS ; dernière valeur valide si la saisie est invalide. */
@@ -309,10 +489,9 @@ function readLiveParams(): LiveParams {
     transpose,
     keyShift: keyShift(),
     program: INSTRUMENTS[cbInstrument.value],
-    // pas encore de contrôles dans l'interface : valeurs par défaut
-    mono: false,
-    chromatic: false,
-    loop: null,
+    mono: chkMono.checked,
+    chromatic: chkChromatic.checked,
+    loop: loopRange(),
   };
 }
 
@@ -335,6 +514,10 @@ async function playAudio(): Promise<void> {
     showMessage("Attention", "Veuillez d'abord sélectionner un fichier MIDI valide.");
     return;
   }
+  if (!inputNotes.length) {
+    showMessage("Attention", "Aucune piste n'est cochée : il n'y a rien à jouer.");
+    return;
+  }
 
   const request = ++playRequest;
   const status = lblStatus.textContent;
@@ -342,10 +525,11 @@ async function playAudio(): Promise<void> {
   btnPlay.textContent = "⏹ Arrêter";
   lblStatus.textContent = "Chargement du son...";
   try {
-    audio ??= new AudioOutput();
+    audio ??= new AudioOutput(volume());
     await audio.prepare(INSTRUMENTS[cbInstrument.value]);
     if (request !== playRequest) return; // arrêtée pendant le chargement
-    playback = new Playback(inputNotes, readLiveParams, audio, 0, songDuration);
+    // La lecture part de la position choisie à l'arrêt (du début, si c'est la fin du morceau)
+    playback = new Playback(inputNotes, readLiveParams, audio, cursor < songDuration ? cursor : 0.0, songDuration);
   } catch (e) {
     if (request !== playRequest) return;
     starting = false;
@@ -355,7 +539,7 @@ async function playAudio(): Promise<void> {
     return;
   }
   starting = false;
-  setSeekEnabled(true);
+  updateTransport();
   frameId = requestAnimationFrame(pollPlayer);
 }
 
@@ -401,6 +585,10 @@ function exportMidi(): void {
     showMessage("Attention", "Veuillez d'abord sélectionner un fichier MIDI valide.");
     return;
   }
+  if (!inputNotes.length) {
+    showMessage("Attention", "Aucune piste n'est cochée : il n'y a rien à exporter.");
+    return;
+  }
   const { midi } = generateProcessedMidi(chkMelody.checked ? keepHighestNotes(inputNotes) : inputNotes, {
     mode: mode(),
     scaleKey: scaleKey(),
@@ -410,6 +598,8 @@ function exportMidi(): void {
     transpose,
     keyShift: keyShift(),
     program: INSTRUMENTS[cbInstrument.value],
+    mono: chkMono.checked,
+    chromatic: chkChromatic.checked,
   });
 
   // Le navigateur enregistre le fichier dans son dossier de téléchargements
@@ -422,11 +612,116 @@ function exportMidi(): void {
   showMessage("Succès", `Fichier MIDI exporté avec succès :\n${name}`);
 }
 
+// --- Réglages retenus d'une visite à l'autre ---------------------------------
+
+const volume = () => Number(scaleVolume.value) / 100;
+
+function saveSettings(): void {
+  const settings = {
+    scale: scaleKey(),
+    transpose,
+    mode: mode(),
+    melody: melodySaved ?? chkMelody.checked, // en Simple Corde, la case est cochée d'office
+    mono: chkMono.checked,
+    chromatic: chkChromatic.checked,
+    notation: notation(),
+    instrument: cbInstrument.value,
+    strums: getStrums(),
+    speed: Number(scaleSpeed.value),
+    delayMs: Number(scaleStrumSpeed.value),
+    volume: Number(scaleVolume.value),
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // stockage refusé (navigation privée, réglage du navigateur) : les réglages ne sont pas retenus
+  }
+}
+
+function pickRadio(name: string, value: unknown): void {
+  for (const radio of document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
+    if (radio.value === value) radio.checked = true;
+  }
+}
+
+/** Remplit la liste des tonalités et reprend les réglages de la dernière visite, s'ils sont lisibles. */
+function restoreSettings(): void {
+  let saved: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    if (typeof parsed === "object" && parsed !== null) saved = parsed as Record<string, unknown>;
+  } catch {
+    // stockage refusé ou contenu illisible : réglages par défaut
+  }
+  const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+  const check = (box: HTMLInputElement, value: unknown) => {
+    if (typeof value === "boolean") box.checked = value;
+  };
+  // Un curseur ramène de lui-même une valeur hors de ses bornes
+  const slide = (input: HTMLInputElement, value: unknown) => {
+    if (number(value) !== null) input.value = String(value);
+  };
+
+  pickRadio("notation", saved.notation);
+  fillScales();
+  const scale = SCALES.indexOf(saved.scale as string);
+  if (scale >= 0) cbScale.selectedIndex = scale;
+  transpose = Math.max(-MAX_TRANSPOSE, Math.min(MAX_TRANSPOSE, Math.trunc(number(saved.transpose) ?? 0)));
+  pickRadio("mode", saved.mode);
+  check(chkMelody, saved.melody);
+  check(chkMono, saved.mono);
+  check(chkChromatic, saved.chromatic);
+  if (typeof saved.instrument === "string" && saved.instrument in INSTRUMENTS) cbInstrument.value = saved.instrument;
+  const strums = number(saved.strums);
+  if (strums !== null) spinStrums.value = String(Math.max(1, Math.min(MAX_STRUMS, Math.trunc(strums))));
+  slide(scaleSpeed, saved.speed);
+  slide(scaleStrumSpeed, saved.delayMs);
+  slide(scaleVolume, saved.volume);
+}
+
+// --- Clavier -----------------------------------------------------------------
+
+/** Espace : écouter, puis pause et reprise. Flèches : reculer et avancer. Début : retour au début. */
+function onKeyDown(event: KeyboardEvent): void {
+  if (event.ctrlKey || event.altKey || event.metaKey || dialog.open) return;
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  if (event.key === " ") {
+    // Espace garde son rôle sur une case, une liste ou le titre des pistes
+    if (target?.closest('input[type="checkbox"], input[type="radio"], select, summary')) return;
+    event.preventDefault(); // ni défilement de la page, ni clic sur le bouton qui a le focus
+    if (event.repeat) return;
+    if (playback) togglePause();
+    else if (inputNotes && !starting) void playAudio();
+    return;
+  }
+  // Les flèches gardent leur rôle dans un champ, un curseur ou une liste
+  if (!inputNotes || target?.closest("input, select")) return;
+  if (event.key === "ArrowLeft") seekBy(-SEEK_STEP);
+  else if (event.key === "ArrowRight") seekBy(SEEK_STEP);
+  else if (event.key === "Home") seekTo(0.0);
+  else return;
+  event.preventDefault();
+}
+
 // --- Mise en place -----------------------------------------------------------
 
 function setupUi(): void {
-  fillScales();
+  cbInstrument.replaceChildren(...Object.keys(INSTRUMENTS).map((name) => new Option(name)));
+  cbInstrument.value = DEFAULT_INSTRUMENT;
+  restoreSettings();
+  fillFileKeys();
+  // Tout réglage modifié est retenu pour la prochaine visite
+  document.querySelector(".settings")!.addEventListener("change", saveSettings);
+
   cbScale.addEventListener("change", onHarmonyChange);
+  cbFileKey.addEventListener("change", onHarmonyChange);
+  chkChromatic.addEventListener("change", drawTimeline);
+  tracksList.addEventListener("change", () => {
+    enabledParts = new Set([...tracksList.querySelectorAll("input")].filter((b) => b.checked).map((b) => b.value));
+    onTracksChange();
+  });
+  $("btn-tracks-all").addEventListener("click", () => setAllTracks(true));
+  $("btn-tracks-none").addEventListener("click", () => setAllTracks(false));
   $("btn-transpose-down").addEventListener("click", () => changeTranspose(-1));
   $("btn-transpose-up").addEventListener("click", () => changeTranspose(1));
   for (const radio of document.querySelectorAll('input[name="mode"]')) {
@@ -436,16 +731,19 @@ function setupUi(): void {
   for (const radio of document.querySelectorAll('input[name="notation"]')) {
     radio.addEventListener("change", onNotationChange);
   }
-  cbInstrument.replaceChildren(...Object.keys(INSTRUMENTS).map((name) => new Option(name)));
-  cbInstrument.value = DEFAULT_INSTRUMENT;
 
   // Valeur des curseurs, écrite à côté
   const showSliders = () => {
     $("out-speed").textContent = `x${Number(scaleSpeed.value).toFixed(2)}`;
     $("out-strum-speed").textContent = scaleStrumSpeed.value;
+    $("out-volume").textContent = `${scaleVolume.value} %`;
   };
   scaleSpeed.addEventListener("input", showSliders);
   scaleStrumSpeed.addEventListener("input", showSliders);
+  scaleVolume.addEventListener("input", () => {
+    showSliders();
+    audio?.setVolume(volume());
+  });
   showSliders();
 
   $("btn-browse").addEventListener("click", () => fileInput.click());
@@ -469,15 +767,24 @@ function setupUi(): void {
 
   btnBack.textContent = `⏪ -${SEEK_STEP} s`;
   btnForward.textContent = `+${SEEK_STEP} s ⏩`;
-  btnStart.addEventListener("click", () => playback?.seekTo(0.0));
-  btnBack.addEventListener("click", () => playback?.seek(-SEEK_STEP));
-  btnForward.addEventListener("click", () => playback?.seek(SEEK_STEP));
+  btnStart.addEventListener("click", () => seekTo(0.0));
+  btnBack.addEventListener("click", () => seekBy(-SEEK_STEP));
+  btnForward.addEventListener("click", () => seekBy(SEEK_STEP));
+  btnLoopStart.addEventListener("click", () => setLoopBound(false));
+  btnLoopEnd.addEventListener("click", () => setLoopBound(true));
+  btnLoopClear.addEventListener("click", clearLoop);
   // Un seul bouton : « Écouter » à l'arrêt, « Arrêter » pendant la lecture
   btnPlay.addEventListener("click", toggleAudio);
   btnPause.addEventListener("click", togglePause);
   $("btn-export").addEventListener("click", exportMidi);
+  window.addEventListener("keydown", onKeyDown);
+  // Firefox clique le bouton qui a le focus au relâchement d'Espace
+  window.addEventListener("keyup", (event) => {
+    if (event.key === " " && event.target instanceof HTMLButtonElement && !dialog.open) event.preventDefault();
+  });
 
-  setSeekEnabled(false);
+  updateTransport();
+  updateLoop();
   showPosition(0.0);
   onModeChange(); // Simple Corde au démarrage : « Mélodie seule » cochée et grisée
   onHarmonyChange();

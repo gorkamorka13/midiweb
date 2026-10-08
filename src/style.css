@@ -299,6 +299,11 @@ button:disabled {
   gap: 4px 8px;
 }
 
+.hint {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
 .position {
   margin-left: auto;
   font-size: 15px;
