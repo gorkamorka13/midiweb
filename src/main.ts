@@ -239,7 +239,7 @@ function showPosition(seconds: number): void {
 
 function setSeekEnabled(enabled: boolean): void {
   for (const button of [...seekButtons, btnPause]) button.disabled = !enabled;
-  timeline.setSeekable(enabled);
+  timeline.setDragSeek(enabled);
 }
 
 function resetDisplay(): void {
@@ -309,6 +309,10 @@ function readLiveParams(): LiveParams {
     transpose,
     keyShift: keyShift(),
     program: INSTRUMENTS[cbInstrument.value],
+    // pas encore de contrôles dans l'interface : valeurs par défaut
+    mono: false,
+    chromatic: false,
+    loop: null,
   };
 }
 
@@ -341,7 +345,7 @@ async function playAudio(): Promise<void> {
     audio ??= new AudioOutput();
     await audio.prepare(INSTRUMENTS[cbInstrument.value]);
     if (request !== playRequest) return; // arrêtée pendant le chargement
-    playback = new Playback(inputNotes, readLiveParams, audio);
+    playback = new Playback(inputNotes, readLiveParams, audio, 0, songDuration);
   } catch (e) {
     if (request !== playRequest) return;
     starting = false;
