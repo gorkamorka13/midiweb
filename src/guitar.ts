@@ -101,6 +101,30 @@ export function chordOf(root: number, suffix: string): string {
   return NOTE_NAMES.fr[mod(root, 12)] + suffix;
 }
 
+// Fondamentales reconnues dans un nom d'accord écrit : les noms français, puis les lettres
+const ROOTS: Record<string, number> = {
+  do: 0, ré: 2, re: 2, mi: 4, fa: 5, sol: 7, la: 9, si: 11,
+  c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11,
+};
+const WRITTEN_CHORD = /^(do|ré|re|mi|fa|sol|la|si|[a-g])([#♯b♭]?)(m|dim)?$/i;
+
+/** Texte qui rend la main aux accords calculés, dans un fichier où des accords sont écrits. */
+export const AUTO_CHORD = "auto";
+
+/**
+ * Accord écrit en toutes lettres (« Lam », « Am », « Sib », « F#dim »), dans l'une ou l'autre
+ * notation : null pour « auto », undefined si le texte n'est pas un des accords de CHORDS.
+ */
+export function parseChord(text: string): ChordRef | null | undefined {
+  const written = text.trim();
+  if (written.toLowerCase() === AUTO_CHORD) return null;
+  const match = WRITTEN_CHORD.exec(written);
+  if (!match) return undefined;
+  const [, root, accidental, suffix = ""] = match;
+  const shift = accidental === "" ? 0 : accidental === "#" || accidental === "♯" ? 1 : -1;
+  return [mod(ROOTS[root.toLowerCase()] + shift, 12), suffix.toLowerCase()];
+}
+
 // Degrés d'une gamme (demi-tons depuis la tonique) et accord porté par chacun
 const DEGREES: Record<Quality, [step: number, suffix: string][]> = {
   Majeur: [[0, ""], [2, "m"], [4, "m"], [5, ""], [7, ""], [9, "m"], [11, "dim"]],

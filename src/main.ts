@@ -7,6 +7,7 @@ import exampleMelody from "../examples/au_clair_de_la_lune.mid?url";
 import exampleTracks from "../examples/au_clair_de_la_lune_3_pistes.mid?url";
 import { AudioOutput, Playback, type PlaybackView } from "./audio";
 import {
+  CHORDS,
   DEFAULT_INSTRUMENT,
   INSTRUMENTS,
   MAX_STRUMS,
@@ -27,6 +28,7 @@ import {
   type Notation,
 } from "./guitar";
 import {
+  applyChords,
   chordNameOf,
   detectKey,
   generateProcessedMidi,
@@ -35,11 +37,14 @@ import {
   keepHighestNotes,
   listParts,
   readMidiInput,
+  setChord,
   uniformBeats,
+  type ChordMark,
   type MidiInput,
   type Note,
   type Part,
 } from "./logic";
+import { MIDICSV_EXTENSIONS, writeMidicsvChords } from "./midicsv";
 import type { LiveParams } from "./player";
 import { STYLES, type StrumStyle } from "./styles";
 import { refreshColors } from "./ui/canvas";
@@ -90,6 +95,9 @@ const welcome = $("welcome");
 const player = $("player");
 const dialog = $<HTMLDialogElement>("dlg");
 const dlgCancel = $("dlg-cancel");
+const chordDialog = $<HTMLDialogElement>("dlg-chord");
+const cbChordRoot = $<HTMLSelectElement>("cb-chord-root");
+const cbChordSuffix = $<HTMLSelectElement>("cb-chord-suffix");
 
 let playback: Playback | null = null;
 let audio: AudioOutput | null = null; // sortie sonore ouverte au premier usage, puis réutilisée
@@ -100,7 +108,13 @@ let frameId = 0;
 let transpose = 0;
 let songDuration = 0.0;
 let inputFileName: string | null = null;
-let fileNotes: Note[] = []; // toutes les notes du fichier
+let computedNotes: Note[] = []; // toutes les notes du fichier, avec les accords calculés
+let chordMarks: ChordMark[] = []; // accords écrits dans le fichier ou choisis sur la frise
+let chordsDirty = false; // accords modifiés depuis l'ouverture du fichier ou leur enregistrement
+let sourceText: string | null = null; // texte du fichier MIDICSV ouvert : les accords s'y enregistrent
+let fileNotes: Note[] = []; // toutes les notes du fichier, accords écrits compris
+// Accords affichés sur la frise : `chord` est la clé de CHORDS, `tick` le début de la note dans le fichier
+let chordLabels: { start: number; name: string; chord: string; tick?: number }[] = [];
 let parts: Part[] = [];
 let enabledParts = new Set<string>(); // pistes cochées
 let melodyPart: Part | null = null; // piste qui porte probablement la mélodie
@@ -124,8 +138,12 @@ const EXAMPLES = [
   { name: "au_clair_de_la_lune_3_pistes.mid", url: exampleTracks },
 ];
 
-const timeline = new Timeline(tlScroll, $("tl-spacer"), $<HTMLCanvasElement>("cv-timeline"), (seconds) =>
-  seekTo(seconds, false),
+const timeline = new Timeline(
+  tlScroll,
+  $("tl-spacer"),
+  $<HTMLCanvasElement>("cv-timeline"),
+  (seconds) => seekTo(seconds, false),
+  (start) => editChord(start),
 );
 
 function checked(name: string): string {
@@ -301,7 +319,10 @@ function fillTracks(): void {
 }
 
 function fileStatus(): string {
-  return `${inputNotes?.length ?? 0} notes détectées | Durée totale : ${songDuration.toFixed(2)}s`;
+  const status = `${inputNotes?.length ?? 0} notes détectées | Durée totale : ${songDuration.toFixed(2)}s`;
+  const written = chordMarks.filter((m) => m.chord).length;
+  if (!written && !chordsDirty) return status;
+  return `${status} | ${written} accords écrits${chordsDirty ? " (non enregistrés)" : ""}`;
 }
 
 /** Les pistes cochées ont changé : elles seules sont jouées, y compris par la lecture en cours. */
@@ -334,16 +355,64 @@ function drawTimeline(): void {
   const chords = mode() === "accord";
   const harmony = harmonyMap(scaleKey(), chkChromatic.checked);
   const shift = keyShift();
+  let mark = 0; // premier accord écrit qui commence après la note
   const labels = used.map((n) => {
     const pitch = n.pitch + shift;
     const chord: string | undefined = chords ? chordNameOf(n, harmony, shift) : harmony[mod(pitch, 12)];
     const name = chord
       ? transposedChordName(chord, transpose, notation())
       : noteName(pitch + transpose, notation());
-    return { start: n.start, name };
+    while (mark < chordMarks.length && chordMarks[mark].seconds <= n.start + 1e-9) mark++;
+    const written = chords && mark > 0 && chordMarks[mark - 1].chord !== null;
+    return { start: n.start, name, written, chord: chord ?? "", tick: n.tick };
   });
+  chordLabels = chords ? labels : [];
   // Les notes des pistes décochées restent dessinées, grisées
   timeline.setModel({ notes: fileNotes, used: new Set(used), labels, chords, duration: songDuration });
+}
+
+// --- Accords écrits ----------------------------------------------------------
+
+/** Les accords écrits ont changé : la frise et la lecture en cours les prennent tout de suite. */
+function setChordMarks(marks: ChordMark[]): void {
+  chordMarks = marks;
+  chordsDirty = true;
+  fileNotes = applyChords(computedNotes, chordMarks);
+  onTracksChange();
+}
+
+/**
+ * Change l'accord dont le nom a été cliqué sur la frise, jusqu'au changement d'accord suivant.
+ * L'accord se choisit tel qu'il est affiché et entendu ; il est retenu dans la tonalité du fichier,
+ * comme s'il y était écrit.
+ */
+function editChord(start: number): void {
+  const index = chordLabels.findIndex((l) => l.start === start);
+  const label = chordLabels[index];
+  if (label?.tick === undefined) return;
+  const next = chordLabels.slice(index + 1).find((l) => l.name !== label.name && l.tick !== undefined);
+  const [, root, suffix] = CHORDS[label.chord];
+  cbChordRoot.replaceChildren(...Array.from({ length: 12 }, (_, i) => new Option(noteName(i, notation()), String(i))));
+  cbChordRoot.value = String(mod(root + transpose, 12));
+  cbChordSuffix.value = suffix;
+  $("dlg-chord-text").textContent = next
+    ? `De ${formatTime(label.start)} à ${formatTime(next.start)}.`
+    : `De ${formatTime(label.start)} à la fin du morceau.`;
+  const request = fileRequest;
+  chordDialog.returnValue = "";
+  chordDialog.showModal();
+  chordDialog.addEventListener(
+    "close",
+    () => {
+      const choice = chordDialog.returnValue;
+      if ((choice !== "ok" && choice !== "auto") || request !== fileRequest) return; // annulé, ou autre fichier déposé
+      const picked = [mod(Number(cbChordRoot.value) - transpose - keyShift(), 12), cbChordSuffix.value] as const;
+      const from = { tick: label.tick!, seconds: label.start };
+      const to = next ? { tick: next.tick!, seconds: next.start } : null;
+      setChordMarks(setChord(chordMarks, from, to, choice === "ok" ? picked : null));
+    },
+    { once: true },
+  );
 }
 
 // --- Ce qui est joué ---------------------------------------------------------
@@ -487,10 +556,13 @@ async function loadFile(file: File): Promise<void> {
   stopAudio(true);
   timeline.scrollToStart();
   let input: MidiInput;
+  let text: string | null = null;
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (request !== fileRequest) return; // un autre fichier a été choisi entre-temps
     input = readMidiInput(file.name, bytes);
+    const isCsv = MIDICSV_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
+    if (isCsv) text = new TextDecoder("utf-8").decode(bytes);
   } catch (e) {
     closeFile();
     showMessage("Erreur", `Impossible de lire le fichier : ${errorText(e)}`);
@@ -505,8 +577,12 @@ async function loadFile(file: File): Promise<void> {
     return;
   }
   inputFileName = file.name;
-  // Les accords sont lus dans toutes les pistes, cochées ou non
-  fileNotes = harmonize(input.notes);
+  // Les accords sont lus dans toutes les pistes, cochées ou non ; ceux qui sont écrits l'emportent
+  computedNotes = harmonize(input.notes);
+  chordMarks = input.chords;
+  chordsDirty = false;
+  sourceText = text;
+  fileNotes = applyChords(computedNotes, chordMarks);
   parts = listParts(input);
   // Plusieurs pistes jouées ensemble se superposent : seule la mélodie probable est cochée d'office
   melodyPart = guessMelodyPart(input);
@@ -543,6 +619,10 @@ function openFile(): void {
 /** Fichier illisible ou vide : on ne garde pas les notes du fichier précédent. */
 function closeFile(): void {
   inputFileName = null;
+  computedNotes = [];
+  chordMarks = [];
+  chordsDirty = false;
+  sourceText = null;
   fileNotes = [];
   parts = [];
   melodyPart = null;
@@ -705,14 +785,38 @@ function exportMidi(): void {
     beatsPerBar,
   });
 
-  // Le navigateur enregistre le fichier dans son dossier de téléchargements
   const name = `${inputFileName.replace(/\.[^.]*$/, "")}_strum.mid`;
+  download(new Blob([midi], { type: "audio/midi" }), name);
+  showMessage("Succès", `Fichier MIDI exporté avec succès :\n${name}`);
+}
+
+/** Le navigateur enregistre le fichier dans son dossier de téléchargements. */
+function download(blob: Blob, name: string): void {
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([midi], { type: "audio/midi" }));
+  link.href = URL.createObjectURL(blob);
   link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
-  showMessage("Succès", `Fichier MIDI exporté avec succès :\n${name}`);
+}
+
+/** Télécharge le fichier MIDICSV ouvert avec les accords écrits ; le reste du fichier est inchangé. */
+function saveCsv(): void {
+  if (!inputNotes || !inputFileName) {
+    showMessage("Attention", "Veuillez d'abord sélectionner un fichier MIDI valide.");
+    return;
+  }
+  if (sourceText === null) {
+    showMessage(
+      "Attention",
+      "Les accords ne s'enregistrent que dans un fichier MIDICSV (.csv, .txt) : le fichier ouvert est un fichier MIDI.",
+    );
+    return;
+  }
+  const text = writeMidicsvChords(sourceText, chordMarks, ([root, suffix]) => noteName(root, notation()) + suffix);
+  download(new Blob([text], { type: "text/csv" }), inputFileName);
+  chordsDirty = false;
+  if (!playback && !starting) lblStatus.textContent = fileStatus();
+  showMessage("Succès", `Accords enregistrés dans le fichier :\n${inputFileName}`);
 }
 
 // --- Réglages retenus d'une visite à l'autre ---------------------------------
@@ -868,6 +972,7 @@ function setupUi(): void {
   setupShell({
     open: browse,
     exportMidi,
+    saveCsv,
     loadExample: (index) => void loadExample(index),
     reset: () => void resetSettings(),
     // Les canevas sont redessinés aux couleurs du thème ; en lecture, `pollPlayer` redessine l'accord

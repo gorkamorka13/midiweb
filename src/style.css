@@ -835,6 +835,15 @@ dialog form button {
   min-width: 6em;
 }
 
+.chord-pick {
+  display: flex;
+  gap: 8px;
+}
+
+.chord-pick select {
+  flex: 1;
+}
+
 .keys {
   width: 100%;
   border-collapse: collapse;

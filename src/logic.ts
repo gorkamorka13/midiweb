@@ -15,6 +15,7 @@ import {
   chordOf,
   harmonyMap,
   mod,
+  parseChord,
   transposedChordName,
   type ChordRef,
   type Key,
@@ -36,6 +37,19 @@ export interface Note {
   channel: number;
   /** Accord entendu dans le fichier quand la note commence (voir `harmonize`) ; absent : accord de la note. */
   chord?: ChordRef;
+  /** Début de la note dans le fichier, en ticks ; absent pour une note qui ne vient pas d'un fichier. */
+  tick?: number;
+}
+
+/**
+ * Accord écrit dans le fichier (ligne Text_t d'un MIDICSV, texte d'un fichier MIDI) ou choisi sur
+ * la frise : il vaut pour les notes qui commencent à cet instant ou après, jusqu'à l'accord écrit
+ * suivant. `chord` null : retour aux accords calculés.
+ */
+export interface ChordMark {
+  tick: number;
+  seconds: number;
+  chord: ChordRef | null;
 }
 
 /** Ce qui est lu dans un fichier : ses notes (aucune si le fichier n'en contient pas) et le nom de ses pistes. */
@@ -48,6 +62,8 @@ export interface MidiInput {
   beatsPerBar: number;
   /** Tempo au début de la première note, en noires par minute. */
   bpm: number;
+  /** Accords écrits dans le fichier, dans l'ordre du temps. */
+  chords: ChordMark[];
 }
 
 /** Les notes et les noms de piste suffisent à décrire les parties d'un morceau. */
@@ -80,8 +96,9 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
   const isCsv = MIDICSV_EXTENSIONS.some((ext) => fileName.toLowerCase().endsWith(ext));
   const mid = isCsv ? readMidicsv(new TextDecoder("utf-8").decode(bytes)) : parseMidi(bytes);
   const notes: Note[] = [];
-  type Begun = { pitch: number; start: number; velocity: number; track: number; channel: number };
+  type Begun = { pitch: number; start: number; velocity: number; track: number; channel: number; tick: number };
   const active = new Map<string, Begun>(); // canal:note -> début
+  const chords: ChordMark[] = [];
   let now = 0.0;
   // Tempos successifs (microsecondes par noire), chacun avec sa position en ticks et en secondes
   const tempos = [{ tick: 0, seconds: 0.0, tempo: DEFAULT_TEMPO }];
@@ -94,12 +111,19 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
     if (event.kind === "timeSignature" && event.numerator > 0) {
       beatsPerBar ??= (event.numerator * 4) / event.denominator;
     }
+    if (event.kind === "text") {
+      const chord = parseChord(event.text);
+      if (chord !== undefined) {
+        if (chords[chords.length - 1]?.tick === tick) chords.pop(); // au même instant, le dernier écrit l'emporte
+        chords.push({ tick, seconds: now, chord });
+      }
+    }
     if (event.kind !== "noteOn" && event.kind !== "noteOff") continue;
     if (event.channel === 9) continue; // canal 10 = percussions : pas des hauteurs de note
     const key = `${event.channel}:${event.note}`;
     if (event.kind === "noteOn" && event.velocity > 0) {
       if (!active.has(key)) {
-        active.set(key, { pitch: event.note, start: now, velocity: event.velocity, track, channel: event.channel });
+        active.set(key, { pitch: event.note, start: now, velocity: event.velocity, track, channel: event.channel, tick });
       }
     } else {
       const begun = active.get(key);
@@ -137,7 +161,7 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
   // Tempo de la première note : celui de la dernière valeur lue avant elle
   const first = notes.length ? notes[0].start : 0;
   const tempo = tempos.filter((t) => t.seconds <= first + 1e-9).pop()!.tempo;
-  return { notes, trackNames, beats, beatsPerBar: beatsPerBar ?? 4, bpm: 60e6 / tempo };
+  return { notes, trackNames, beats, beatsPerBar: beatsPerBar ?? 4, bpm: 60e6 / tempo, chords };
 }
 
 /**
@@ -309,6 +333,55 @@ export function harmonize(notes: Note[], tolerance = 0.03): Note[] {
   return notes.map((note) => {
     const chord = chords.get(note);
     return chord ? { ...note, chord } : { ...note };
+  });
+}
+
+/**
+ * Les notes avec les accords écrits : chaque note prend l'accord du dernier repère posé à son début
+ * ou avant, à la place de l'accord calculé. Sans repère, ou après un retour aux accords calculés,
+ * la note est rendue telle quelle.
+ *
+ * @param marks repères dans l'ordre du temps
+ */
+export function applyChords(notes: Note[], marks: readonly ChordMark[]): Note[] {
+  return notes.map((note) => {
+    let low = 0;
+    let high = marks.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (note.start + 1e-9 < marks[mid].seconds) high = mid;
+      else low = mid + 1;
+    }
+    const chord = low ? marks[low - 1].chord : null;
+    return chord ? { ...note, chord } : note;
+  });
+}
+
+/**
+ * Repères après le choix de `chord` (null : accords calculés) de `from` jusqu'à `to`, ou jusqu'à
+ * la fin du morceau si `to` est null. Ce qui valait à partir de `to` continue de valoir ; un
+ * repère qui répète l'accord déjà en vigueur est retiré.
+ *
+ * @param marks repères dans l'ordre du temps
+ */
+export function setChord(
+  marks: readonly ChordMark[],
+  from: Pick<ChordMark, "tick" | "seconds">,
+  to: Pick<ChordMark, "tick" | "seconds"> | null,
+  chord: ChordRef | null,
+): ChordMark[] {
+  const next = marks.filter((m) => m.tick < from.tick || (to !== null && m.tick >= to.tick));
+  next.push({ tick: from.tick, seconds: from.seconds, chord });
+  if (to !== null && !next.some((m) => m.tick === to.tick)) {
+    const before = marks.filter((m) => m.tick < to.tick).pop();
+    next.push({ tick: to.tick, seconds: to.seconds, chord: before?.chord ?? null });
+  }
+  next.sort((a, b) => a.tick - b.tick);
+  let current: ChordRef | null = null;
+  return next.filter((m) => {
+    const same = m.chord?.[0] === current?.[0] && m.chord?.[1] === current?.[1];
+    current = m.chord;
+    return !same;
   });
 }
 

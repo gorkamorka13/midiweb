@@ -8,6 +8,7 @@ export type Theme = "system" | "light" | "dark";
 export interface ShellHandlers {
   open: () => void;
   exportMidi: () => void;
+  saveCsv: () => void;
   loadExample: (index: number) => void;
   reset: () => void;
   /** Les couleurs affichées ont changé : les canevas sont à redessiner. */
@@ -103,6 +104,7 @@ export function setupShell(handlers: ShellHandlers): void {
   const actions: Record<string, (item: HTMLElement) => void> = {
     open: handlers.open,
     export: handlers.exportMidi,
+    "save-csv": handlers.saveCsv,
     example: (item) => handlers.loadExample(Number(item.dataset.index)),
     theme: (item) => setTheme(item.dataset.value as Theme),
     keys: () => byId<HTMLDialogElement>("dlg-keys").showModal(),

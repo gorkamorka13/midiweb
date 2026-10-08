@@ -6,6 +6,7 @@ export type MidiEvent =
   | { delta: number; kind: "noteOn" | "noteOff"; channel: number; note: number; velocity: number }
   | { delta: number; kind: "tempo"; tempo: number }
   | { delta: number; kind: "trackName"; name: string }
+  | { delta: number; kind: "text"; text: string }
   | { delta: number; kind: "timeSignature"; numerator: number; denominator: number }
   | { delta: number; kind: "endOfTrack" | "other" };
 
@@ -80,6 +81,15 @@ function int16(bytes: Uint8Array, offset: number): number {
   return value >= 0x8000 ? value - 0x10000 : value;
 }
 
+/** Texte d'un méta-message : UTF-8 s'il est valide (« Rém »), sinon un caractère par octet. */
+function decodeText(data: number[]): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(data));
+  } catch {
+    return data.map((c) => String.fromCharCode(c)).join("");
+  }
+}
+
 function readTrack(reader: Reader): MidiEvent[] {
   const track: MidiEvent[] = [];
   const [name, size] = reader.chunkHeader();
@@ -110,6 +120,8 @@ function readTrack(reader: Reader): MidiEvent[] {
         track.push({ delta, kind: "tempo", tempo: (data[0] << 16) | (data[1] << 8) | data[2] });
       } else if (metaType === 0x03) {
         track.push({ delta, kind: "trackName", name: data.map((c) => String.fromCharCode(c)).join("") });
+      } else if (metaType === 0x01) {
+        track.push({ delta, kind: "text", text: decodeText(data) });
       } else if (metaType === 0x58 && data.length >= 2) {
         track.push({ delta, kind: "timeSignature", numerator: data[0], denominator: 2 ** data[1] });
       } else {

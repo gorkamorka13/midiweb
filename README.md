@@ -36,7 +36,8 @@ machine.
 ### Barre, menu et petits écrans
 
 - La barre du haut montre le fichier ouvert, avec **Ouvrir** et **Exporter**. Le bouton à trois points ouvre
-  le menu : ouvrir un fichier, charger un des deux exemples, exporter, choisir le thème, voir les
+  le menu : ouvrir un fichier, charger un des deux exemples, exporter, enregistrer les accords,
+  choisir le thème, voir les
   raccourcis clavier, **À propos**, et **Réinitialiser les réglages**.
 - **Thème** : **Système** suit le réglage clair ou sombre de l'appareil ; **Clair** et **Sombre**
   l'imposent. Le choix est retenu par le navigateur.
@@ -63,6 +64,39 @@ machine.
   la contient, au lieu de l'accord de repli (La mineur).
 - **Boucle** : **A** pose le début et **B** la fin à la position courante ; la lecture répète ce
   passage. **Effacer** retire la boucle.
+
+### Accords écrits
+
+Un accord calculé peut être remplacé par un accord écrit, de deux façons.
+
+**Dans le fichier MIDICSV**, par une ligne `Text_t` dont le texte est le nom de l'accord. L'accord
+vaut pour les notes qui commencent à cet instant ou après, toutes pistes confondues, jusqu'à
+l'accord écrit suivant ; `auto` rend la main aux accords calculés :
+
+```
+2, 0,    Text_t, "Lam"
+2, 0,    Note_on_c, 0, 67, 90
+2, 720,  Note_off_c, 0, 67, 0
+2, 1440, Text_t, "Fa"
+2, 2880, Text_t, "auto"
+```
+
+- Les noms s'écrivent dans l'une ou l'autre notation (`Do` ou `C`, `Lam` ou `Am`, `Sib` ou `Bb`),
+  avec `#` ou `b`, suivis de rien (majeur), de `m` ou de `dim` : ce sont les accords dont
+  l'application connaît le doigté. Tout autre texte (`Sol7`, des paroles) reste un simple texte ;
+  les lignes `Marker_t` ne sont pas lues.
+- L'accord est écrit dans la tonalité du fichier, comme les notes qui l'entourent : il suit la
+  **Tonalité globale** et la transposition, comme un accord calculé.
+- Le texte d'un fichier MIDI (méta-message de texte) est lu de la même façon.
+
+**Sur la frise**, en mode **Accord 6 Cordes** : cliquer sur le nom d'un accord, choisir sa
+fondamentale et son type, tels qu'on veut les entendre. Le choix vaut jusqu'au changement d'accord
+suivant, et s'entend tout de suite si la lecture est en cours ; **Automatique** revient à l'accord
+calculé. Les accords écrits sont affichés dans la couleur d'accent.
+
+**Enregistrer les accords (CSV)...**, dans le menu, télécharge le fichier MIDICSV ouvert avec ses
+lignes `Text_t` d'accords mises à jour ; le reste du fichier est recopié tel quel. Un fichier MIDI
+ne s'enregistre pas ainsi : les accords choisis y sont perdus à la fermeture de la page.
 
 ### Styles de strumming
 
@@ -130,7 +164,7 @@ de fichiers statiques. Les chemins sont relatifs : il fonctionne aussi dans un s
 |---|---|---|
 | `src/guitar.ts` | Accordage, accords, grilles des tonalités, noms des notes. | Section 1 |
 | `src/midifile.ts` | Lecture et écriture des fichiers MIDI, sur le modèle de mido. | `mido` |
-| `src/midicsv.ts` | Lecture des fichiers MIDICSV. | `read_midicsv` |
+| `src/midicsv.ts` | Lecture des fichiers MIDICSV, écriture des accords dans leur texte. | `read_midicsv` |
 | `src/logic.ts` | Notes du fichier, tonalité, mélodie seule, doigtés, strumming, export. | Section 2 |
 | `src/player.ts` | Moteur de lecture temps réel. | `LivePlayer` |
 | `src/audio.ts` | Sortie sonore (Web Audio) et conduite du moteur. | `pygame.midi` |
@@ -177,6 +211,7 @@ python tools/make_fixtures.py --local chemin/vers/morceau.mid
 | Déplacement | Seulement pendant la lecture. | Aussi à l'arrêt : la lecture part de la position choisie. |
 | Pistes | Toutes les pistes sont jouées ensemble. | Choix des pistes jouées ; au chargement, seule la mélodie probable. |
 | Accords | Un accord par note, d'après la gamme. | L'accord que forment les notes qui sonnent ensemble dans le fichier ; d'après la gamme pour une note seule. |
+| Accords écrits | Absents. | Lus dans les lignes `Text_t` du fichier, modifiables sur la frise, enregistrés dans le fichier MIDICSV. |
 | Réglages de départ | « Mélodie seule » décochée. | « Mélodie seule » et « Une seule note ou un seul accord à la fois » cochées. |
 | Fichier sans note | Remplacé par une note de secours. | Refusé avec un message. |
 | Boucle, volume, raccourcis clavier, réglages retenus | Absents. | Présents. |

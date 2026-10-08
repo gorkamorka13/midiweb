@@ -130,6 +130,10 @@
           <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>
           Exporter le MIDI...
         </button>
+        <button type="button" role="menuitem" data-action="save-csv">
+          <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>
+          Enregistrer les accords (CSV)...
+        </button>
       </div>
       <hr />
       <div role="group" aria-label="Thème">
@@ -323,7 +327,7 @@
         <section class="song" aria-label="Morceau">
           <div class="song-head">
             <span class="eyebrow">Morceau</span>
-            <span class="hint">Cliquer sur la frise pour se déplacer</span>
+            <span class="hint">Cliquer sur la frise pour se déplacer, sur un accord pour le changer</span>
           </div>
           <div id="tl-scroll" class="tl-scroll">
             <div id="tl-spacer" class="tl-spacer">
@@ -391,6 +395,25 @@
       <p id="dlg-text"></p>
       <form method="dialog">
         <button id="dlg-cancel" value="cancel" hidden>Annuler</button>
+        <button value="ok" class="primary" autofocus>OK</button>
+      </form>
+    </dialog>
+
+    <!-- Accord choisi sur la frise : il remplace l'accord calculé, « Automatique » y revient -->
+    <dialog id="dlg-chord" aria-labelledby="dlg-chord-title">
+      <h2 id="dlg-chord-title">Changer l'accord</h2>
+      <p id="dlg-chord-text"></p>
+      <div class="chord-pick">
+        <select id="cb-chord-root" aria-label="Fondamentale"></select>
+        <select id="cb-chord-suffix" aria-label="Type d'accord">
+          <option value="">Majeur</option>
+          <option value="m">mineur</option>
+          <option value="dim">diminué</option>
+        </select>
+      </div>
+      <form method="dialog">
+        <button value="auto">Automatique</button>
+        <button value="cancel">Annuler</button>
         <button value="ok" class="primary" autofocus>OK</button>
       </form>
     </dialog>
