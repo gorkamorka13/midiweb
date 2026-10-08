@@ -119,8 +119,16 @@ All phases are done. Verified on 2026-10-08:
 Not verified: the sound itself was not listened to (the run was headless). The timbre and the
 volume balance need a human ear.
 
+## After the migration
+
+- [x] **Pause button** (2026-10-08). `LivePlayer.pause` / `resume`, a Pause / Reprendre button next
+      to Écouter. Pausing cuts the sound at once and keeps the position that was being heard;
+      settings and seeks still work while paused and are heard on resume. The engine's behaviour
+      without pause is unchanged (the comparison with the Python engine still passes), and the
+      pause itself is covered by `tests/pause.test.ts` and a headless Chrome run.
+
 ## Out of scope for this migration
 
-Known limits of the desktop app that are kept as they are: four keys only, no pause, seeking
+Known limits of the desktop app that are kept as they are: four keys only, seeking
 only during playback, export does not record live changes, empty file replaced by a fallback
 note, type 2 files rejected. Publishing (push, GitHub Pages) is left to the repository owner.

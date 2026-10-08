@@ -20,8 +20,11 @@ machine.
    demande une connexion.
 4. Pendant la lecture : changer les réglages, se déplacer avec **Début**, **-5 s**, **+5 s** ou en
    cliquant sur la frise.
-5. **Arrêter** stoppe la lecture. **Exporter le MIDI...** télécharge le morceau entier avec les
-   réglages affichés.
+5. **Pause** suspend la lecture et coupe le son ; **Reprendre** repart du même endroit. En pause,
+   l'accord reste affiché, les réglages et les déplacements restent possibles et s'entendent à la
+   reprise.
+6. **Arrêter** stoppe la lecture (la relancer repart du début). **Exporter le MIDI...** télécharge
+   le morceau entier avec les réglages affichés.
 
 ## Développement
 
@@ -83,7 +86,8 @@ python tools/make_fixtures.py --local chemin/vers/morceau.mid
 | Fenêtre | Taille fixe. | Page qui s'adapte à la largeur de l'écran. |
 | Curseurs | Sans valeur affichée. | La valeur est écrite à côté du curseur. |
 | Fichiers MIDI à division SMPTE | Lus avec des temps faux. | Refusés avec un message. |
+| Pause | Absente : Arrêter puis Écouter repart du début. | Bouton **Pause / Reprendre**. |
 
-Les limites connues de l'application de bureau sont conservées : quatre tonalités, pas de pause,
-déplacement seulement pendant la lecture, export avec un seul jeu de réglages, fichiers de type 2
-non pris en charge.
+Les autres limites connues de l'application de bureau sont conservées : quatre tonalités,
+déplacement seulement pendant la lecture (ou en pause), export avec un seul jeu de réglages,
+fichiers de type 2 non pris en charge.

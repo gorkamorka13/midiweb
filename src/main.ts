@@ -47,6 +47,7 @@ const lblChordSub = $("lbl-chord-sub");
 const cvChord = $<HTMLCanvasElement>("cv-chord");
 const lblStroke = $("lbl-stroke");
 const btnPlay = $<HTMLButtonElement>("btn-play");
+const btnPause = $<HTMLButtonElement>("btn-pause");
 const btnStart = $<HTMLButtonElement>("btn-start");
 const btnBack = $<HTMLButtonElement>("btn-back");
 const btnForward = $<HTMLButtonElement>("btn-forward");
@@ -68,6 +69,7 @@ let inputNotes: Note[] | null = null;
 let fileKey: Key | null = null; // tonalité détectée dans le fichier
 let melodySaved: boolean | null = null; // état de « Mélodie seule » avant le passage en Simple Corde
 let lastStrums = 2;
+let shownPosition = -1; // dernière position donnée à la frise
 
 const timeline = new Timeline($("tl-scroll"), $("tl-spacer"), $<HTMLCanvasElement>("cv-timeline"), (seconds) =>
   playback?.seekTo(seconds),
@@ -236,12 +238,14 @@ function showPosition(seconds: number): void {
 }
 
 function setSeekEnabled(enabled: boolean): void {
-  for (const button of seekButtons) button.disabled = !enabled;
+  for (const button of [...seekButtons, btnPause]) button.disabled = !enabled;
   timeline.setSeekable(enabled);
 }
 
 function resetDisplay(): void {
   btnPlay.textContent = "▶ Écouter";
+  btnPause.textContent = "⏸ Pause";
+  shownPosition = -1;
   setSeekEnabled(false);
   showPosition(0.0);
   clearNowPlaying();
@@ -313,6 +317,14 @@ function toggleAudio(): void {
   else void playAudio();
 }
 
+/** Suspend ou reprend la lecture, sans revenir au début. */
+function togglePause(): void {
+  if (!playback) return;
+  if (playback.paused) playback.resume();
+  else playback.pause();
+  btnPause.textContent = playback.paused ? "▶ Reprendre" : "⏸ Pause";
+}
+
 async function playAudio(): Promise<void> {
   stopAudio(true);
   if (!inputNotes) {
@@ -355,9 +367,12 @@ function pollPlayer(): void {
   }
   const p = readLiveParams();
   const modeName = p.mode === "accord" ? "Accord 6 cordes" : "Simple corde";
-  lblStatus.textContent = `${modeName} | x${p.speed.toFixed(2)} | ${p.strums} strums`;
+  const state = `${modeName} | x${p.speed.toFixed(2)} | ${p.strums} strums`;
+  lblStatus.textContent = playback.paused ? `En pause | ${state}` : state;
   showPosition(view.position);
-  timeline.movePlayhead(view.position);
+  // En pause, la frise ne suit la tête de lecture que si elle bouge : on peut la parcourir librement
+  if (!playback.paused || view.position !== shownPosition) timeline.movePlayhead(view.position);
+  shownPosition = view.position;
   updateNowPlaying(view);
   frameId = requestAnimationFrame(pollPlayer);
 }
@@ -455,6 +470,7 @@ function setupUi(): void {
   btnForward.addEventListener("click", () => playback?.seek(SEEK_STEP));
   // Un seul bouton : « Écouter » à l'arrêt, « Arrêter » pendant la lecture
   btnPlay.addEventListener("click", toggleAudio);
+  btnPause.addEventListener("click", togglePause);
   $("btn-export").addEventListener("click", exportMidi);
 
   setSeekEnabled(false);

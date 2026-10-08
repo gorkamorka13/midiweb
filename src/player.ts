@@ -122,6 +122,9 @@ function bisectRight(values: number[], x: number): number {
  *
  * Pour l'affichage, `display` décrit la dernière frappe et `stringHits` donne l'heure à laquelle
  * chaque corde a sonné pour la dernière fois (`previousStringHits` : la fois d'avant).
+ *
+ * En pause, les pas continuent : la position ne bouge plus que par déplacement et rien n'est
+ * frappé. À la reprise, la note qui se trouve sous la position est rejouée.
  */
 export class LivePlayer {
   static readonly LATE_MAX = 0.05; // retard maximal rattrapé pour placer un strum à son heure exacte (s)
@@ -135,6 +138,7 @@ export class LivePlayer {
   stringHits: number[] = OPEN_STRINGS.map(() => -Infinity);
   previousStringHits: number[] = OPEN_STRINGS.map(() => -Infinity);
   finished = false;
+  paused = false;
   /** Heure du dernier pas. */
   now = 0.0;
 
@@ -175,6 +179,32 @@ export class LivePlayer {
     this.seeks.push(["abs", position]);
   }
 
+  /**
+   * Suspend la lecture à l'heure `now` : tout est coupé et la position est celle de cet instant.
+   * `now` peut précéder le dernier pas (moteur en avance sur ce qu'on entend) : la position
+   * recule d'autant, et les frappes programmées après `now` sont oubliées.
+   */
+  pause(now: number): void {
+    if (this.finished || this.paused) return;
+    this.srcTime = Math.max(0.0, this.srcTime + (now - this.last) * this.getParams().speed);
+    this.last = this.now = now;
+    this.paused = true;
+    this.resync(now);
+    this.position = this.srcTime;
+    for (const hits of [this.stringHits, this.previousStringHits]) {
+      hits.forEach((time, string) => {
+        if (time > now) hits[string] = -Infinity;
+      });
+    }
+  }
+
+  /** Reprend la lecture à l'heure `now`, là où elle a été suspendue. */
+  resume(now: number): void {
+    if (!this.paused) return;
+    this.paused = false;
+    this.last = now;
+  }
+
   /** Arrête la lecture et coupe les notes en cours. */
   stop(now: number): void {
     if (this.finished) return;
@@ -192,13 +222,26 @@ export class LivePlayer {
     }
   }
 
+  /** Repart de la position courante : tout est coupé, les notes en cours seront rejouées. */
+  private resync(now: number): void {
+    this.silence(now);
+    this.heap.clear();
+    this.generation.clear();
+    this.active.clear();
+    this.nextNote = bisectRight(this.starts, this.srcTime);
+    for (let i = 0; i < this.nextNote; i++) {
+      const n = this.notes[i];
+      if (n.start + n.duration > this.srcTime) this.active.set(n, { last: null, soundKey: null });
+    }
+  }
+
   /** Un pas du moteur à l'heure `now` (s). Renvoie false quand la lecture est terminée. */
   tick(now: number): boolean {
     if (this.finished) return false;
     this.now = now;
     const p = this.getParams();
     const speed = p.speed;
-    this.srcTime += (now - this.last) * speed;
+    if (!this.paused) this.srcTime += (now - this.last) * speed;
     this.last = now;
     if (p.program !== this.program) {
       this.program = p.program;
@@ -219,18 +262,7 @@ export class LivePlayer {
       this.starts = this.notes.map((n) => n.start);
       resync = true;
     }
-    if (resync) {
-      // On repart de la position courante : tout est coupé, les notes en cours sont rejouées
-      this.silence(now);
-      this.heap.clear();
-      this.generation.clear();
-      this.active.clear();
-      this.nextNote = bisectRight(this.starts, this.srcTime);
-      for (let i = 0; i < this.nextNote; i++) {
-        const n = this.notes[i];
-        if (n.start + n.duration > this.srcTime) this.active.set(n, { last: null, soundKey: null });
-      }
-    }
+    if (resync) this.resync(now);
     const srcTime = this.srcTime;
     this.position = srcTime;
 
@@ -238,9 +270,11 @@ export class LivePlayer {
       this.active.set(this.notes[this.nextNote], { last: null, soundKey: null });
       this.nextNote++;
     }
-    if (seeks.length && !this.active.size) {
-      this.display = null; // arrivée dans un silence : la frappe d'avant n'est plus affichée
+    if (seeks.length && (this.paused || !this.active.size)) {
+      // arrivée dans un silence, ou déplacement en pause : la frappe d'avant n'est plus affichée
+      this.display = null;
     }
+    if (this.paused) return true;
 
     const harmonyMap = SCALE_HARMONY[p.scale] ?? SCALE_HARMONY[DEFAULT_SCALE];
     const strums = Math.max(1, Math.min(MAX_STRUMS, p.strums));

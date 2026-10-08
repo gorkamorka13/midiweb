@@ -149,6 +149,25 @@ export class Playback {
     this.player.seekTo(position);
   }
 
+  get paused(): boolean {
+    return this.player.paused;
+  }
+
+  /** Suspend la lecture là où on l'entend, et coupe tout de suite les notes en cours. */
+  pause(): void {
+    if (this.player.finished || this.player.paused) return;
+    const heard = this.view();
+    const now = this.audio.context.currentTime;
+    this.player.pause(now);
+    // Le moteur avait de l'avance : l'écran garde la dernière frappe réellement entendue
+    this.player.display = heard.display;
+    this.history = [{ time: now, position: this.player.position, display: heard.display }];
+  }
+
+  resume(): void {
+    this.player.resume(this.engineTime());
+  }
+
   /** Arrête la lecture et coupe tout de suite les notes en cours (et celles déjà programmées). */
   stop(): void {
     this.worker.terminate();
