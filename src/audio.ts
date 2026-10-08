@@ -23,6 +23,10 @@ const PLAYABLE_NOTES = Array.from(
   (_, i) => GUITAR_LOW - MAX_TRANSPOSE + i,
 );
 
+// Durée (s) de l'extinction d'une note coupée. La bibliothèque prévoit 0,3 s : à plusieurs strums
+// par seconde, l'accord précédent s'entendait encore sous les deux suivants.
+const RELEASE = 0.1;
+
 type Instrument = ReturnType<typeof Soundfont>;
 
 /**
@@ -97,7 +101,7 @@ export class AudioOutput implements MidiOut {
   noteOn(pitch: number, velocity: number, time: number): void {
     this.voices.get(pitch)?.(time);
     if (!this.current) return;
-    this.voices.set(pitch, this.current.start({ note: pitch, velocity, time, stopId: `n${this.nextId++}` }));
+    this.voices.set(pitch, this.current.start({ note: pitch, velocity, time, ampRelease: RELEASE, stopId: `n${this.nextId++}` }));
   }
 
   noteOff(pitch: number, time: number): void {

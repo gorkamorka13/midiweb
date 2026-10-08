@@ -53,6 +53,17 @@ machine.
 
 Les flèches gardent leur rôle habituel quand un curseur, un champ ou une liste a le focus.
 
+## Fichiers d'exemple
+
+Le dossier `examples/` contient deux fichiers MIDI simples (« Au clair de la lune », Do Majeur,
+100 noires par minute, 38 s) pour vérifier l'application à l'oreille :
+
+- `au_clair_de_la_lune.mid` : une seule piste, la mélodie ;
+- `au_clair_de_la_lune_3_pistes.mid` : mélodie, basse et accords sur trois pistes, pour essayer
+  le choix des pistes.
+
+Ils sont écrits par `python tools/make_examples.py`.
+
 ## Développement
 
 Il faut Node.js (testé avec la version 24).

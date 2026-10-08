@@ -83,6 +83,11 @@ All wired in `src/main.ts` and `index.html`; the engine parts already existed.
       sent about 200 string hits per second in chord mode (measured on a real file), which the
       owner reported as superimposed and too fast. With the melody track alone it is about 22.
       The same file gave the same 200 before the track list existed, and in the first web version.
+- [x] **Shorter fade-out of a cut note** (`RELEASE` in `src/audio.ts`, 0.1 s instead of the
+      library's 0.3 s linear fade), so a chord no longer sounds under the next two strums. Not
+      checked by ear.
+- [x] **Example files** in `examples/`, written by `tools/make_examples.py`: a slow one-track
+      melody and the same tune on three tracks.
 - [x] **Cleaner defaults.** "Mélodie seule" and "Une seule note ou un seul accord à la fois" are
       ticked on a first visit (the desktop app starts with "Mélodie seule" unticked).
 - [x] **Correct the detected key by hand.** "Tonalité du morceau" is a list: the detected key first,
