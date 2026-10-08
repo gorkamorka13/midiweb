@@ -256,11 +256,6 @@
             <input id="spin-tempo" type="number" min="30" max="300" step="1" value="120" />
           </div>
 
-          <div class="field inline">
-            <label for="spin-strums">Nombre de strums par note</label>
-            <input id="spin-strums" type="number" min="1" max="16" step="1" value="2" />
-          </div>
-
           <div class="field">
             <span class="field-head">
               <label for="scale-strum-speed">Balayage des cordes (ms)</label>
@@ -352,6 +347,12 @@
               <input id="scale-speed" type="range" min="0.5" max="2" step="0.01" value="1" />
               <output id="out-speed" for="scale-speed"></output>
               <button id="btn-speed-reset" type="button" title="Revenir à la vitesse du fichier">x1</button>
+            </div>
+
+            <!-- Strums par note : le découpage de chaque note, hors style -->
+            <div class="strums">
+              <label for="spin-strums" class="field-label">Strums par note</label>
+              <input id="spin-strums" type="number" min="1" max="16" step="1" value="2" />
             </div>
           </div>
 

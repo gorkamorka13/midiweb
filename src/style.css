@@ -731,6 +731,12 @@ body.dropping .stage {
   max-width: 460px;
 }
 
+.strums {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .speed input {
   flex: 1;
   min-width: 0;

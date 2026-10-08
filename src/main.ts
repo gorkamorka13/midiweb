@@ -904,6 +904,7 @@ function setupUi(): void {
   scaleSpeed.addEventListener("input", showSliders);
   // La vitesse est sous la frise, hors du panneau des réglages dont les changements sont retenus
   scaleSpeed.addEventListener("change", saveSettings);
+  spinStrums.addEventListener("change", saveSettings);
   $("btn-speed-reset").addEventListener("click", () => {
     scaleSpeed.value = "1";
     showSliders();
