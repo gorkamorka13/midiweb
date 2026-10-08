@@ -31,8 +31,8 @@ These are forced by the browser, not design choices.
    page. "Exporter le MIDI..." downloads the file instead of opening a save dialog.
 4. **Window.** The fixed 752 x 665 window becomes a responsive page. The timeline takes the
    available width.
-5. **Message boxes.** Tk dialogs become an in-page dialog. The export success box becomes a
-   status line message, since the browser does not tell the page where the file was saved.
+5. **Message boxes.** Tk dialogs become an in-page dialog. The export success box names the
+   downloaded file instead of its full path, which the browser does not give to the page.
 6. **SMPTE-timed MIDI files** are rejected with a clear message (mido reads them with negative
    times, which is not worth reproducing).
 
@@ -78,29 +78,46 @@ tests/                   Vitest suites and fixtures
       Commit.
 
 ### Phase 3: playback engine
-- [ ] `player.ts`: port of `LivePlayer._run` as a `tick(now)` step function.
-- [ ] Test: same message sequence as the Python engine under the simulated clock. Commit.
+- [x] `player.ts`: port of `LivePlayer._run` as a `tick(now)` step function.
+- [x] Test: same message sequence as the Python engine under the simulated clock. Commit.
 
 ### Phase 4: audio
-- [ ] `audio.ts`: output adapter on smplr (one voice per sounding pitch, scheduled start/stop),
+- [x] `audio.ts`: output adapter on smplr (one voice per sounding pitch, scheduled start/stop),
       instrument loading with status feedback, worker-driven tick.
 
 ### Phase 5: interface
-- [ ] `index.html`, `style.css`: the three setting groups, now-playing panel, timeline,
+- [x] `index.html`, `style.css`: the three setting groups, now-playing panel, timeline,
       transport, status line and export button.
-- [ ] `ui/chord.ts`, `ui/timeline.ts` on canvas.
-- [ ] `main.ts`: all handlers of `GuitarMidiApp` (file, key, transpose, mode, melody, notation,
+- [x] `ui/chord.ts`, `ui/timeline.ts` on canvas.
+- [x] `main.ts`: all handlers of `GuitarMidiApp` (file, key, transpose, mode, melody, notation,
       instrument, strums, speed, sweep, play/stop, seek, export). Commit.
 
 ### Phase 6: verification in the browser
-- [ ] `npm run build` and `npm test` pass.
-- [ ] Load a file, play, change every setting during playback, seek, export, and re-import the
+- [x] `npm run build` and `npm test` pass.
+- [x] Load a file, play, change every setting during playback, seek, export, and re-import the
       export in the Python app's reader to confirm it is valid.
-- [ ] Fix what the run shows. Commit.
+- [x] Fix what the run shows. Commit.
 
 ### Phase 7: documentation
-- [ ] `README.md` (French): usage, development commands, differences with the desktop app.
-- [ ] Final state of this plan. Commit.
+- [x] `README.md` (French): usage, development commands, differences with the desktop app.
+- [x] Final state of this plan. Commit.
+
+## Result
+
+All phases are done. Verified on 2026-10-08:
+
+- `npm test`: 117 tests pass. Notes, detected key, melody filter, exported MIDI bytes and the
+  playback engine's message sequence are identical to the Python app, on the synthetic fixtures
+  and on three real MIDI files (local fixtures, not committed).
+- `npm run build`: type-check and production build pass (about 54 KB of JavaScript).
+- Headless Chrome run against the dev server and the production build: file loading, error
+  dialogs, playback, every setting changed during playback, seek buttons, click on the timeline,
+  stop, play to the end, export, narrow screen. No console error. Notes reach Web Audio 54 to
+  80 ms ahead of their time, none late. The file exported from the page is byte-identical to the
+  Python export with the same settings.
+
+Not verified: the sound itself was not listened to (the run was headless). The timbre and the
+volume balance need a human ear.
 
 ## Out of scope for this migration
 

@@ -254,7 +254,7 @@ export function generateProcessedMidi(
     keyShift = 0,
     program = INSTRUMENTS[DEFAULT_INSTRUMENT],
   }: ExportSettings,
-): { midi: Uint8Array; chords: string } {
+): { midi: Uint8Array<ArrayBuffer>; chords: string } {
   const ticksPerBeat = 480;
   const bpm = Math.trunc(120 * speedFactor);
   const tempo = roundHalfEven((((60 * 1e6) / bpm) * 4) / 4);

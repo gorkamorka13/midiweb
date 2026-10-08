@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Guitar MIDI Strummer - Harmoniseur</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Guitar MIDI Strummer - Harmoniseur</h1>
+
+      <div class="top">
+        <div class="settings">
+          <!-- 1. Sélection Fichier -->
+          <fieldset>
+            <legend>1. Fichier MIDI Source</legend>
+            <div class="file-row">
+              <span id="lbl-file" class="file-name muted">Aucun fichier sélectionné</span>
+              <button id="btn-browse" type="button">Parcourir...</button>
+              <input id="file-input" type="file" accept=".mid,.midi,.csv,.txt" hidden />
+            </div>
+          </fieldset>
+
+          <!-- 2. Paramètres Musicaux -->
+          <fieldset>
+            <legend>2. Harmonisation &amp; Mode</legend>
+            <div class="grid">
+              <label for="cb-scale">Tonalité globale :</label>
+              <select id="cb-scale"></select>
+
+              <span>Tonalité du morceau :</span>
+              <span id="lbl-file-key" class="muted value"></span>
+
+              <span>Transposition (demi-tons) :</span>
+              <span class="transpose value">
+                <button id="btn-transpose-down" type="button" aria-label="Un demi-ton plus bas">−</button>
+                <span id="lbl-transpose"></span>
+                <button id="btn-transpose-up" type="button" aria-label="Un demi-ton plus haut">+</button>
+              </span>
+
+              <span>Mode d'accompagnement :</span>
+              <span class="radios value">
+                <label><input type="radio" name="mode" value="corde" checked /> Simple Corde</label>
+                <label><input type="radio" name="mode" value="accord" /> Accord 6 Cordes</label>
+              </span>
+
+              <label class="wide">
+                <input id="chk-melody" type="checkbox" />
+                Mélodie seule (note la plus aiguë des notes simultanées)
+              </label>
+
+              <span>Notation des notes :</span>
+              <span class="radios value">
+                <label><input type="radio" name="notation" value="fr" checked /> Française (Do Ré Mi)</label>
+                <label><input type="radio" name="notation" value="en" /> Anglo-saxonne (C D E)</label>
+              </span>
+
+              <label for="cb-instrument">Instrument :</label>
+              <select id="cb-instrument"></select>
+            </div>
+          </fieldset>
+
+          <!-- 3. Réglages Rythme & Strumming -->
+          <fieldset>
+            <legend>3. Strumming &amp; Vitesse</legend>
+            <div class="grid">
+              <label for="spin-strums">Nombre de strums par note :</label>
+              <input id="spin-strums" type="number" min="1" max="16" step="1" value="2" />
+
+              <label for="scale-speed">Vitesse (multiplicateur) :</label>
+              <span class="slider value">
+                <input id="scale-speed" type="range" min="0.5" max="2" step="0.01" value="1" />
+                <output id="out-speed" for="scale-speed"></output>
+              </span>
+
+              <label for="scale-strum-speed">Balayage cordes (ms) :</label>
+              <span class="slider value">
+                <input id="scale-strum-speed" type="range" min="5" max="40" step="1" value="15" />
+                <output id="out-strum-speed" for="scale-strum-speed"></output>
+              </span>
+            </div>
+          </fieldset>
+        </div>
+
+        <!-- 4. Ce qui est joué : nom de l'accord (ou de la note) et diagramme des cordes -->
+        <fieldset class="now">
+          <legend>Lecture en cours</legend>
+          <div id="lbl-chord" class="chord-name">—</div>
+          <div id="lbl-chord-sub" class="chord-sub muted"></div>
+          <canvas id="cv-chord" role="img" aria-label="Diagramme de l'accord joué"></canvas>
+          <div id="lbl-stroke" class="stroke"></div>
+        </fieldset>
+      </div>
+
+      <!-- 5. Frise du morceau : notes, accords, position de lecture -->
+      <fieldset class="song">
+        <legend>Morceau (cliquer pour se déplacer pendant la lecture)</legend>
+        <div id="tl-scroll" class="tl-scroll">
+          <div id="tl-spacer" class="tl-spacer">
+            <canvas id="cv-timeline" role="img" aria-label="Frise du morceau"></canvas>
+          </div>
+        </div>
+
+        <!-- 6. Transport, sous la frise : début, recul, lecture, avance, puis la position à droite -->
+        <div class="transport">
+          <button id="btn-start" type="button">⏮ Début</button>
+          <button id="btn-back" type="button"></button>
+          <button id="btn-play" type="button" class="play">▶ Écouter</button>
+          <button id="btn-forward" type="button"></button>
+          <span id="lbl-position" class="position"></span>
+        </div>
+      </fieldset>
+
+      <!-- 7. Statut à gauche, export à droite -->
+      <div class="bottom">
+        <span id="lbl-status" class="status">En attente d'un fichier...</span>
+        <button id="btn-export" type="button">💾 Exporter le MIDI...</button>
+      </div>
+    </main>
+
+    <dialog id="dlg">
+      <h2 id="dlg-title"></h2>
+      <p id="dlg-text"></p>
+      <form method="dialog"><button autofocus>OK</button></form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

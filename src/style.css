@@ -1,0 +1,320 @@
+:root {
+  color-scheme: light;
+  --bg: #f3f4f6;
+  --panel: #ffffff;
+  --border: #c8ccd2;
+  --grid: #8a8f98;
+  --accent: #e8590c;
+  --note: #3b6fb6;
+  --text: #1f2328;
+  --muted: #6b7280;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.app {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 12px 16px 16px;
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+fieldset {
+  margin: 0;
+  padding: 10px 12px 12px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+legend {
+  padding: 0 4px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 4px 12px;
+  border: 1px solid #adb1b8;
+  border-radius: 3px;
+  background: #e9ebee;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #dfe6f3;
+  border-color: var(--note);
+}
+
+button:disabled {
+  color: #9aa0a8;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid var(--note);
+  outline-offset: 1px;
+}
+
+/* --- Réglages et lecture en cours ------------------------------------------ */
+
+.top {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.settings {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.grid > .value,
+.grid > select,
+.grid > input {
+  justify-self: end;
+}
+
+.grid .wide {
+  grid-column: 1 / -1;
+}
+
+.radios {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 12px;
+}
+
+.transpose {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transpose button {
+  width: 30px;
+  padding: 4px 0;
+}
+
+#lbl-transpose {
+  min-width: 9.5em;
+  text-align: center;
+  white-space: pre;
+}
+
+#spin-strums {
+  width: 5em;
+}
+
+.slider {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider output {
+  min-width: 3em;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.now {
+  width: 226px;
+  flex: none;
+  text-align: center;
+}
+
+.chord-name {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.chord-sub {
+  min-height: 2.9em;
+  white-space: pre-line;
+}
+
+#cv-chord {
+  display: block;
+  margin: 6px auto;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.stroke {
+  min-height: 1.4em;
+}
+
+/* --- Frise et transport ---------------------------------------------------- */
+
+.song {
+  margin-top: 8px;
+}
+
+.tl-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  touch-action: pan-x pan-y;
+}
+
+/* En lecture, un glissement sur la frise déplace la lecture au lieu de faire défiler */
+.tl-scroll.seekable {
+  cursor: pointer;
+  touch-action: none;
+}
+
+.tl-spacer {
+  min-width: 100%;
+}
+
+#cv-timeline {
+  display: block;
+  position: sticky;
+  left: 0;
+}
+
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.transport .play {
+  min-width: 11em;
+}
+
+.position {
+  margin-left: auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bottom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.status {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* --- Messages -------------------------------------------------------------- */
+
+dialog {
+  max-width: min(420px, 90vw);
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.3);
+}
+
+dialog h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+dialog p {
+  margin: 0 0 14px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+dialog form {
+  text-align: right;
+}
+
+body.dropping .app {
+  outline: 2px dashed var(--note);
+  outline-offset: -4px;
+}
+
+@media (max-width: 680px) {
+  .top {
+    flex-direction: column;
+  }
+
+  .now {
+    width: auto;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .grid > .value,
+  .grid > select,
+  .grid > input {
+    justify-self: start;
+    margin-bottom: 6px;
+  }
+
+  .radios {
+    justify-content: flex-start;
+  }
+}

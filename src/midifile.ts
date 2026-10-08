@@ -224,7 +224,7 @@ function chunk(name: string, data: number[]): number[] {
  * Fichier MIDI standard. Chaque piste reçoit son méta-message de fin de piste ; le statut
  * courant est utilisé entre deux messages de même statut, comme le fait mido.
  */
-export function writeMidi(type: number, ticksPerBeat: number, tracks: RawMessage[][]): Uint8Array {
+export function writeMidi(type: number, ticksPerBeat: number, tracks: RawMessage[][]): Uint8Array<ArrayBuffer> {
   const chunks = [
     chunk("MThd", [
       (type >> 8) & 0xff,
