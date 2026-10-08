@@ -116,6 +116,45 @@ export function listParts({ notes, trackNames }: MidiInput): Part[] {
   return [...parts.values()].sort((a, b) => a.track - b.track || a.channel - b.channel);
 }
 
+// Noms de piste qui désignent la mélodie
+const MELODY_NAMES = /m[ée]lod|lead|vocal|voice|voix|chant/i;
+
+/**
+ * Partie qui porte le plus probablement la mélodie, pour ne jouer qu'elle quand le fichier en a
+ * plusieurs : jouées ensemble, elles donnent chacune leurs accords et tout se superpose.
+ *
+ * On préfère une partie qui joue une note à la fois, pendant la plus grande part du morceau, dans
+ * le médium ou l'aigu, sans trop de silences ; un nom de piste explicite l'emporte.
+ */
+export function guessMelodyPart(input: MidiInput): Part | null {
+  const duration = input.notes.reduce((end, n) => Math.max(end, n.start + n.duration), 0);
+  let best: Part | null = null;
+  let bestScore = -Infinity;
+  for (const part of listParts(input)) {
+    const notes = input.notes.filter((n) => n.track === part.track && n.channel === part.channel);
+    let together = 0; // notes frappées en même temps que la précédente : la partie joue des accords
+    let pitches = 0;
+    notes.forEach((n, i) => {
+      pitches += n.pitch;
+      if (i && n.start - notes[i - 1].start <= 0.03) together++;
+    });
+    const last = notes[notes.length - 1];
+    const span = last.start + last.duration - notes[0].start;
+    const coverage = duration ? Math.min(1, span / duration) : 1;
+    const single = 1 - together / notes.length;
+    // de 0 pour une basse (La grave, 45) à 1 à partir du La# au-dessus du Do central (70)
+    const height = Math.max(0.05, Math.min(1, (pitches / notes.length - 45) / 25));
+    const busy = Math.min(1, notes.length / Math.max(1, span)); // au moins une note par seconde
+    let score = coverage * single * height * busy;
+    if (MELODY_NAMES.test(part.name)) score += 1;
+    if (score > bestScore) {
+      best = part;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 /** Somme compensée (Neumaier), celle de sum() en Python : les deux versions classent ainsi les
  * tonalités sur des corrélations identiques au bit près. */
 function sum(values: number[]): number {

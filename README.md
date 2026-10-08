@@ -15,8 +15,11 @@ machine.
 
 1. Cliquer sur **Parcourir...** (ou déposer un fichier sur la page) et choisir un fichier MIDI
    (`.mid`, `.midi`) ou MIDICSV (`.csv`, `.txt`).
-2. Si le fichier a plusieurs pistes, ouvrir **Pistes jouées** et ne cocher que celles à jouer
-   (la mélodie, par exemple). Les notes des pistes décochées restent dessinées en gris sur la frise.
+2. Si le fichier a plusieurs pistes, la liste **Pistes jouées** s'ouvre avec une seule piste
+   cochée : celle qui porte probablement la mélodie. Cocher une autre piste si le choix est mauvais
+   (**Mélodie probable** y revient, **Toutes** les joue toutes). Jouées ensemble, les pistes d'un
+   arrangement donnent chacune leurs accords et tout se superpose. Les notes des pistes décochées
+   restent dessinées en gris sur la frise.
 3. Régler la tonalité, le mode, le strumming, la vitesse et le volume (modifiables aussi en cours
    de lecture). Les réglages sont retenus par le navigateur d'une visite à l'autre.
 4. Cliquer sur **Écouter**. À la première écoute, le son de l'instrument est chargé depuis le site.
@@ -32,8 +35,9 @@ machine.
 
 - **Tonalité du morceau** : la tonalité détectée est proposée ; si elle est fausse, en choisir une
   autre dans la liste. Le morceau est transposé de cette tonalité vers la **Tonalité globale**.
-- **Une seule note ou un seul accord à la fois** : une nouvelle note coupe la précédente, ce qui
-  évite que les accords de notes qui se chevauchent sonnent ensemble.
+- **Une seule note ou un seul accord à la fois** (coché au départ) : une nouvelle note coupe la
+  précédente, ce qui évite que les accords de notes qui se chevauchent sonnent ensemble.
+- **Mélodie seule** est cochée au départ, contrairement à l'application de bureau.
 - **Accord adapté aux notes hors tonalité** : une note étrangère à la gamme reçoit un accord qui
   la contient, au lieu de l'accord de repli (La mineur).
 - **Boucle** : **A** pose le début et **B** la fin à la position courante ; la lecture répète ce
@@ -112,7 +116,8 @@ python tools/make_fixtures.py --local chemin/vers/morceau.mid
 | Pause | Absente : Arrêter puis Écouter repart du début. | Bouton **Pause / Reprendre**. |
 | Tonalités | Quatre. | Les 24 tonalités majeures et mineures. |
 | Déplacement | Seulement pendant la lecture. | Aussi à l'arrêt : la lecture part de la position choisie. |
-| Pistes | Toutes les pistes sont jouées ensemble. | Choix des pistes jouées. |
+| Pistes | Toutes les pistes sont jouées ensemble. | Choix des pistes jouées ; au chargement, seule la mélodie probable. |
+| Réglages de départ | « Mélodie seule » décochée. | « Mélodie seule » et « Une seule note ou un seul accord à la fois » cochées. |
 | Fichier sans note | Remplacé par une note de secours. | Refusé avec un message. |
 | Boucle, volume, raccourcis clavier, réglages retenus | Absents. | Présents. |
 

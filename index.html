@@ -20,11 +20,13 @@
               <button id="btn-browse" type="button">Parcourir...</button>
               <input id="file-input" type="file" accept=".mid,.midi,.csv,.txt" hidden />
             </div>
-            <!-- Pistes du fichier : seules les pistes cochées sont jouées et exportées -->
+            <!-- Pistes du fichier : seules les pistes cochées sont jouées et exportées ; au
+                 chargement, seule la mélodie probable est cochée -->
             <details id="tracks" class="tracks" hidden>
               <summary id="lbl-tracks"></summary>
               <div id="tracks-list" class="tracks-list"></div>
               <div class="tracks-actions">
+                <button id="btn-tracks-melody" type="button">Mélodie probable</button>
                 <button id="btn-tracks-all" type="button">Toutes</button>
                 <button id="btn-tracks-none" type="button">Aucune</button>
               </div>
@@ -58,12 +60,12 @@
               </span>
 
               <label class="wide">
-                <input id="chk-melody" type="checkbox" />
+                <input id="chk-melody" type="checkbox" checked />
                 Mélodie seule (note la plus aiguë des notes simultanées)
               </label>
 
               <label class="wide">
-                <input id="chk-mono" type="checkbox" />
+                <input id="chk-mono" type="checkbox" checked />
                 Une seule note ou un seul accord à la fois (le nouveau coupe le précédent)
               </label>
 

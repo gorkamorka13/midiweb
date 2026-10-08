@@ -77,6 +77,14 @@ All wired in `src/main.ts` and `index.html`; the engine parts already existed.
       `listParts`) appears when a file has several. Only ticked tracks are played and exported;
       the others stay on the timeline in grey. Changing the choice acts on the running playback.
       The key is detected on the whole file, so it does not move with the choice.
+- [x] **Play only the likely melody track by default.** `guessMelodyPart` (in `logic.ts`) scores
+      each track: single notes, long presence, medium or high pitch, at least one note per second;
+      a track name such as "Lead" or "Mélodie" wins. Reason: a 10-track arrangement played whole
+      sent about 200 string hits per second in chord mode (measured on a real file), which the
+      owner reported as superimposed and too fast. With the melody track alone it is about 22.
+      The same file gave the same 200 before the track list existed, and in the first web version.
+- [x] **Cleaner defaults.** "Mélodie seule" and "Une seule note ou un seul accord à la fois" are
+      ticked on a first visit (the desktop app starts with "Mélodie seule" unticked).
 - [x] **Correct the detected key by hand.** "Tonalité du morceau" is a list: the detected key first,
       then the 24 keys. Reset to the detected key when a new file is loaded.
 - [x] **Seek and start from any position while stopped.** The seek buttons and the timeline move a
@@ -87,7 +95,7 @@ All wired in `src/main.ts` and `index.html`; the engine parts already existed.
       (the earlier note here saying it only covered single notes was wrong). Applied to export too.
 - [x] **Volume control.** Slider, 0 to 100 %.
 - [x] **Keyboard shortcuts.** Space: play, then pause / resume. Left / right: seek 5 s. Home: start.
-- [x] **Remember settings between visits.** `localStorage`, key `midiweb.settings`; blocked or
+- [x] **Remember settings between visits.** `localStorage`, key `midiweb.settings.v2`; blocked or
       unreadable storage falls back to the defaults. The file, the track choice, the corrected key
       and the loop are not stored.
 - [x] **Report an empty file.** The page shows a message and loads nothing. `analyzeInputMidi`
@@ -98,8 +106,8 @@ All wired in `src/main.ts` and `index.html`; the engine parts already existed.
 - [x] **Docs in step.** README updated for the samples' origin, the 24 keys and the new controls.
 
 ### Status on 2026-10-08
-- `npm test`: 130 tests pass (8 new ones in `tests/options.test.ts`: loop, one note at a time,
-  out-of-key chords, track change). `npm run build`: passes.
+- `npm test`: 134 tests pass (12 new ones in `tests/options.test.ts`: loop, one note at a time,
+  out-of-key chords, track change, melody track guess). `npm run build`: passes.
 - Headless Chrome run against the dev server: every item above exercised, no console error.
 - Not covered by a unit test: the wiring in `src/main.ts` (it is only checked in the browser).
 
@@ -113,8 +121,9 @@ All wired in `src/main.ts` and `index.html`; the engine parts already existed.
 ## Next: ideas
 
 - [ ] **Set the loop by dragging on the timeline**, instead of A / B at the current position.
-- [ ] **Guess the melody track** when a file has several (highest average pitch, single notes) and
-      tick only that one by default.
+- [ ] **Fewer strums on short notes.** Every note gets the chosen number of strums, so a 0.2 s
+      note with 2 strums is hit twice in 0.2 s. A minimum strum length would calm fast passages.
+      It changes the engine away from `midi.py`, so it needs an option or new reference data.
 
 ## Out of scope for this migration
 

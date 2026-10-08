@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Note } from "../src/logic";
+import { guessMelodyPart, type Note } from "../src/logic";
 import { LivePlayer, type LiveParams, type MidiOut } from "../src/player";
 
 // Boucle, une note à la fois, accords hors tonalité, choix des pistes : absents de midi.py,
@@ -145,5 +145,34 @@ describe("choix des pistes", () => {
     expect(player.finished).toBe(false);
     run(1.0);
     expect(player.finished).toBe(true);
+  });
+});
+
+describe("mélodie probable", () => {
+  /** Une note par temps (0,5 s) pendant 8 s, sur la piste donnée. */
+  const line = (track: number, pitch: number) => Array.from({ length: 16 }, (_, i) => note(pitch + (i % 5), i * 0.5, 0.5, track));
+  const chords = (track: number, pitch: number) =>
+    Array.from({ length: 8 }, (_, i) => [0, 4, 7].map((step) => note(pitch + step, i, 1.0, track))).flat();
+  const input = (notes: Note[], names: [number, string][] = []) => ({ notes, trackNames: new Map(names) });
+
+  it("préfère la partie aiguë qui joue une note à la fois", () => {
+    const guess = guessMelodyPart(input([...line(1, 36), ...chords(2, 72), ...line(3, 72)]));
+    expect(guess?.track).toBe(3);
+  });
+
+  it("écarte une partie qui ne joue qu'un court passage", () => {
+    const fill = [note(84, 6.0, 0.25, 1), note(86, 6.25, 0.25, 1), note(88, 6.5, 0.25, 1)];
+    expect(guessMelodyPart(input([...fill, ...line(2, 67)]))?.track).toBe(2);
+  });
+
+  it("suit le nom de la piste quand il désigne la mélodie", () => {
+    const notes = [...line(1, 72), ...line(2, 55)];
+    expect(guessMelodyPart(input(notes, [[1, "Flute"], [2, "Mélodie"]]))?.track).toBe(2);
+    expect(guessMelodyPart(input(notes, [[1, "Flute"], [2, "Lead Gtr"]]))?.track).toBe(2);
+  });
+
+  it("rend l'unique partie d'un fichier à une piste, et rien pour un fichier sans note", () => {
+    expect(guessMelodyPart(input(line(0, 40)))?.track).toBe(0);
+    expect(guessMelodyPart(input([]))).toBeNull();
   });
 });

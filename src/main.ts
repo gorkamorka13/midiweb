@@ -27,6 +27,7 @@ import {
 import {
   detectKey,
   generateProcessedMidi,
+  guessMelodyPart,
   keepHighestNotes,
   listParts,
   readMidiInput,
@@ -89,6 +90,7 @@ let inputFileName: string | null = null;
 let fileNotes: Note[] = []; // toutes les notes du fichier
 let parts: Part[] = [];
 let enabledParts = new Set<string>(); // pistes cochées
+let melodyPart: Part | null = null; // piste qui porte probablement la mélodie
 let inputNotes: Note[] | null = null; // notes des pistes cochées : celles qui sont jouées et exportées
 let detectedKey: Key | null = null; // tonalité détectée dans le fichier
 let cursor = 0.0; // position (s) d'où part la lecture ; déplaçable à l'arrêt
@@ -98,7 +100,7 @@ let melodySaved: boolean | null = null; // état de « Mélodie seule » avant l
 let lastStrums = 2;
 let shownPosition = -1; // dernière position donnée à la frise
 
-const STORAGE_KEY = "midiweb.settings";
+const STORAGE_KEY = "midiweb.settings.v2";
 const MIN_LOOP = 0.1; // durée (s) en dessous de laquelle une boucle n'est pas jouée
 
 const timeline = new Timeline(tlScroll, $("tl-spacer"), $<HTMLCanvasElement>("cv-timeline"), (seconds) =>
@@ -252,9 +254,9 @@ function onTracksChange(): void {
   drawTimeline();
 }
 
-function setAllTracks(enabled: boolean): void {
-  enabledParts = new Set(enabled ? parts.map(partId) : []);
-  for (const box of tracksList.querySelectorAll("input")) box.checked = enabled;
+function setTracks(enabled: Part[]): void {
+  enabledParts = new Set(enabled.map(partId));
+  for (const box of tracksList.querySelectorAll("input")) box.checked = enabledParts.has(box.value);
   onTracksChange();
 }
 
@@ -427,7 +429,9 @@ async function loadFile(file: File): Promise<void> {
   inputFileName = file.name;
   fileNotes = input.notes;
   parts = listParts(input);
-  enabledParts = new Set(parts.map(partId));
+  // Plusieurs pistes jouées ensemble se superposent : seule la mélodie probable est cochée d'office
+  melodyPart = guessMelodyPart(input);
+  enabledParts = new Set((melodyPart ? [melodyPart] : parts).map(partId));
   // La tonalité est cherchée dans tout le fichier : elle ne change pas avec les pistes cochées
   detectedKey = detectKey(fileNotes);
   songDuration = Math.max(...fileNotes.map((n) => n.start + n.duration));
@@ -442,7 +446,7 @@ function openFile(): void {
   cbFileKey.value = "";
   fillFileKeys();
   fillTracks();
-  tracksBox.open = false;
+  tracksBox.open = parts.length > 1; // ouverte : on voit quelle piste a été retenue
   clearLoop();
   onTracksChange();
   onHarmonyChange();
@@ -455,6 +459,7 @@ function closeFile(): void {
   inputFileName = null;
   fileNotes = [];
   parts = [];
+  melodyPart = null;
   enabledParts = new Set();
   detectedKey = null;
   songDuration = 0.0;
@@ -720,8 +725,9 @@ function setupUi(): void {
     enabledParts = new Set([...tracksList.querySelectorAll("input")].filter((b) => b.checked).map((b) => b.value));
     onTracksChange();
   });
-  $("btn-tracks-all").addEventListener("click", () => setAllTracks(true));
-  $("btn-tracks-none").addEventListener("click", () => setAllTracks(false));
+  $("btn-tracks-melody").addEventListener("click", () => setTracks(melodyPart ? [melodyPart] : parts));
+  $("btn-tracks-all").addEventListener("click", () => setTracks(parts));
+  $("btn-tracks-none").addEventListener("click", () => setTracks([]));
   $("btn-transpose-down").addEventListener("click", () => changeTranspose(-1));
   $("btn-transpose-up").addEventListener("click", () => changeTranspose(1));
   for (const radio of document.querySelectorAll('input[name="mode"]')) {
