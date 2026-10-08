@@ -1,6 +1,7 @@
 import type { Note } from "../logic";
 import {
-  COL_ACCENT, COL_BORDER, COL_GRID, COL_MUTED, COL_NOTE, COL_NOTE_OFF, COL_TEXT, FONT_SMALL, line, prepare, text,
+  COL_ACCENT, COL_BORDER, COL_GRID, COL_LOOP, COL_MUTED, COL_NOTE, COL_NOTE_OFF, COL_TEXT, FONT_SMALL, line, prepare,
+  text,
 } from "./canvas";
 
 const TL_H = 104;
@@ -33,6 +34,9 @@ export class Timeline {
   private viewWidth = 0;
   private held = false; // bouton de la souris enfoncé sur la frise
   private playhead: number | null = null; // position de lecture (s), null = masquée
+  private loopStart: number | null = null; // bornes de la boucle (s)
+  private loopEnd: number | null = null;
+  private dragSeek = false; // un glissement au doigt déplace la lecture au lieu de faire défiler
   private bars: { x1: number; x2: number; y: number; used: boolean }[] = [];
   private barHeight = 2;
   private names: { x: number; name: string }[] = [];
@@ -51,8 +55,13 @@ export class Timeline {
     this.spacer.style.height = `${TL_H}px`;
 
     const seek = (event: PointerEvent) => onSeek((scroller.scrollLeft + event.offsetX - TL_PAD) / this.scale);
+    let tap = false; // doigt posé à l'arrêt : un simple toucher place la lecture, un glissement fait défiler
     canvas.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
+      if (event.pointerType !== "mouse" && !this.dragSeek) {
+        tap = true;
+        return;
+      }
       this.held = true;
       canvas.setPointerCapture(event.pointerId);
       seek(event);
@@ -60,9 +69,11 @@ export class Timeline {
     canvas.addEventListener("pointermove", (event) => {
       if (this.held) seek(event);
     });
-    const release = () => (this.held = false);
-    canvas.addEventListener("pointerup", release);
-    canvas.addEventListener("pointercancel", release);
+    canvas.addEventListener("pointerup", (event) => {
+      if (tap) seek(event);
+      tap = this.held = false;
+    });
+    canvas.addEventListener("pointercancel", () => (tap = this.held = false));
 
     // La molette fait défiler la frise, quand elle dépasse de la fenêtre
     scroller.addEventListener(
@@ -91,9 +102,17 @@ export class Timeline {
     return TL_PAD + this.scale * seconds;
   }
 
-  /** En lecture, un clic ou un glissement sur la frise déplace la lecture. */
-  setSeekable(seekable: boolean): void {
-    this.scroller.classList.toggle("seekable", seekable);
+  /** En lecture, un glissement au doigt sur la frise déplace la lecture au lieu de la faire défiler. */
+  setDragSeek(dragSeek: boolean): void {
+    this.dragSeek = dragSeek;
+    this.scroller.classList.toggle("drag-seek", dragSeek);
+  }
+
+  /** Bornes de la boucle (s) ; une seule peut être posée. */
+  setLoop(start: number | null, end: number | null): void {
+    this.loopStart = start;
+    this.loopEnd = end;
+    this.render();
   }
 
   setModel(model: TimelineModel | null): void {
@@ -209,6 +228,14 @@ export class Timeline {
     ctx.save();
     ctx.translate(-left, 0);
 
+    if (this.loopStart !== null && this.loopEnd !== null) {
+      ctx.fillStyle = COL_LOOP;
+      ctx.fillRect(this.x(this.loopStart), 0, this.x(this.loopEnd) - this.x(this.loopStart), TL_H);
+    }
+    for (const bound of [this.loopStart, this.loopEnd]) {
+      if (bound !== null) line(ctx, this.x(bound), 0, this.x(bound), TL_H, COL_NOTE);
+    }
+
     for (const used of [false, true]) {
       // les notes jouées sont dessinées par-dessus les notes écartées
       ctx.fillStyle = used ? COL_NOTE : COL_NOTE_OFF;
@@ -237,10 +264,10 @@ export class Timeline {
     ctx.restore();
   }
 
-  /** Place la tête de lecture et fait défiler la frise pour la suivre. */
-  movePlayhead(seconds: number): void {
+  /** Place la tête de lecture et, si `follow`, fait défiler la frise pour la suivre. */
+  movePlayhead(seconds: number, follow = true): void {
     this.playhead = seconds;
-    if (!this.held) {
+    if (follow && !this.held) {
       // pendant un clic maintenu, la frise ne bouge pas sous le pointeur
       this.scroller.scrollLeft = Math.max(0.0, this.x(seconds) - this.viewWidth * TL_FOLLOW);
     }

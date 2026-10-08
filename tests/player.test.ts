@@ -20,6 +20,10 @@ function toParams(raw: Record<string, Value>): LiveParams {
     transpose: raw.transpose as number,
     keyShift: raw.key_shift as number,
     program: raw.program as number,
+    // Comme midi.py : notes superposées, accord de repli hors tonalité, pas de boucle
+    mono: false,
+    chromatic: false,
+    loop: null,
   };
 }
 

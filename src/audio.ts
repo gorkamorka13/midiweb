@@ -10,6 +10,13 @@ const SOUNDFONT_INSTRUMENTS: Record<number, string> = {
   0: "acoustic_grand_piano",
 };
 
+// Les échantillons sont servis avec le site (dossier public/soundfonts), en ogg ou, pour les
+// navigateurs qui ne le lisent pas, en mp3
+function instrumentUrl(name: string): string {
+  const ogg = document.createElement("audio").canPlayType('audio/ogg; codecs="vorbis"');
+  return `${import.meta.env.BASE_URL}soundfonts/MusyngKite/${name}-${ogg ? "ogg" : "mp3"}.js`;
+}
+
 // Hauteurs que l'application peut jouer : tessiture de la guitare, transposition comprise
 const PLAYABLE_NOTES = Array.from(
   { length: GUITAR_HIGH - GUITAR_LOW + 2 * MAX_TRANSPOSE + 1 },
@@ -25,11 +32,22 @@ type Instrument = ReturnType<typeof Soundfont>;
  */
 export class AudioOutput implements MidiOut {
   readonly context = new AudioContext();
+  private readonly master = this.context.createGain(); // volume général
   private instruments = new Map<number, { instrument: Instrument; ready: Promise<void>; loaded: boolean }>();
   private current: Instrument | null = null; // instrument des notes frappées à partir de maintenant
   private wanted: number | null = null;
   private voices = new Map<number, StopFn>(); // hauteur -> arrêt de la note qui sonne
   private nextId = 0;
+
+  constructor(volume = 1.0) {
+    this.master.gain.value = volume;
+    this.master.connect(this.context.destination);
+  }
+
+  /** Volume général, de 0 (muet) à 1 (niveau des échantillons). */
+  setVolume(volume: number): void {
+    this.master.gain.setTargetAtTime(volume, this.context.currentTime, 0.02);
+  }
 
   private entry(program: number) {
     let entry = this.instruments.get(program);
@@ -37,7 +55,8 @@ export class AudioOutput implements MidiOut {
       const name = SOUNDFONT_INSTRUMENTS[program];
       if (!name) throw new Error(`instrument ${program} inconnu`);
       const instrument = Soundfont(this.context, {
-        instrument: name,
+        instrumentUrl: instrumentUrl(name),
+        destination: this.master,
         notesToLoad: { notes: PLAYABLE_NOTES, fallback: "nearest" },
       });
       const created = { instrument, loaded: false, ready: Promise.resolve() };
@@ -120,8 +139,19 @@ export class Playback {
   private history: { time: number; position: number; display: Display | null }[] = [];
   private endTime: number | null = null;
 
-  constructor(notes: Note[], getParams: () => LiveParams, private readonly audio: AudioOutput) {
-    this.player = new LivePlayer(notes, getParams, audio, this.engineTime());
+  /**
+   * @param position position de départ dans le morceau (s)
+   * @param duration durée du morceau, indépendante des pistes choisies
+   */
+  constructor(
+    notes: Note[],
+    getParams: () => LiveParams,
+    private readonly audio: AudioOutput,
+    private readonly position: number,
+    duration: number,
+  ) {
+    this.player = new LivePlayer(notes, getParams, audio, this.engineTime(), duration);
+    if (position > 0) this.player.seekTo(position);
     this.worker.onmessage = () => this.step();
     this.step();
   }
@@ -147,6 +177,11 @@ export class Playback {
 
   seekTo(position: number): void {
     this.player.seekTo(position);
+  }
+
+  /** Change les notes jouées (choix des pistes) sans interrompre la lecture. */
+  setNotes(notes: Note[]): void {
+    this.player.setNotes(notes);
   }
 
   get paused(): boolean {
@@ -181,7 +216,7 @@ export class Playback {
     const heard = history.length && history[0].time <= now ? history[0] : null;
     const hits = [this.player.stringHits, this.player.previousStringHits];
     return {
-      position: heard ? heard.position : 0.0,
+      position: heard ? heard.position : this.position,
       display: heard ? heard.display : null,
       lit: OPEN_STRINGS.map((_, s) => hits.some((h) => now >= h[s] && now - h[s] < HIT_GLOW)),
       finished: this.endTime !== null && now >= this.endTime,

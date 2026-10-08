@@ -27,13 +27,14 @@ const tables = synthetic.tables!;
 
 describe("tables de la guitare", () => {
   it("tonalités et doigtés", () => {
-    expect(SCALES).toEqual(tables.scales);
-    expect(CHORD_FRETS).toEqual(tables.chordFrets);
-    expect(CHORD_VOICINGS).toEqual(tables.chordVoicings);
+    // La version web a plus de tonalités et d'accords : ceux de midi.py y sont, inchangés
+    expect(SCALES).toEqual(expect.arrayContaining(tables.scales));
+    expect(CHORD_FRETS).toMatchObject(tables.chordFrets);
+    expect(CHORD_VOICINGS).toMatchObject(tables.chordVoicings);
   });
 
   it.each(["fr", "en"] as Notation[])("noms en notation %s", (notation) => {
-    expect(SCALES.map((s) => scaleLabel(s, notation))).toEqual(tables.scaleLabels[notation]);
+    expect(tables.scales.map((s: string) => scaleLabel(s, notation))).toEqual(tables.scaleLabels[notation]);
     for (const [pitch, name] of tables.noteNames[notation]) expect(noteName(pitch, notation)).toBe(name);
     for (const [chord, t, name] of tables.chordNames[notation]) {
       expect(transposedChordName(chord, t, notation)).toBe(name);
@@ -80,7 +81,7 @@ for (const fixtures of allFixtures) {
         expect(detectKey(notes)).toEqual(expected.key);
         expect(keepHighestNotes(notes).map((n) => notes.indexOf(n))).toEqual(expected.melody);
         expect(Math.max(...notes.map((n) => n.start + n.duration))).toBe(expected.duration);
-        for (const scale of SCALES) expect(shiftToKey(detectKey(notes), scale)).toBe(expected.shifts[scale]);
+        for (const scale of tables.scales) expect(shiftToKey(detectKey(notes), scale)).toBe(expected.shifts[scale]);
       });
 
       it.each(expected.exports.map((e, i) => [i, e] as const))(`${expected.name} : export %i`, (_i, e) => {

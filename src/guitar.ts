@@ -16,8 +16,16 @@ export function mod(n: number, m: number): number {
 // Accordage, du Mi grave au Mi aigu : E2(40), A2(45), D3(50), G3(55), B3(59), E4(64)
 export const OPEN_STRINGS = [40, 45, 50, 55, 59, 64];
 
+// Noms des notes par notation : française (Do Ré Mi) ou anglo-saxonne (C D E)
+export const NOTE_NAMES: Record<Notation, string[]> = {
+  fr: ["Do", "Do#", "Ré", "Mib", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "Sib", "Si"],
+  en: ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"],
+};
+
 // Accords : [doigté, fondamentale, suffixe]. Le doigté donne une case par corde du Mi grave
 // au Mi aigu ('x' = corde non jouée) ; la fondamentale est une classe de hauteur (0 = Do).
+// Un accord majeur, un mineur et un diminué par note : les positions ouvertes quand elles
+// existent, des barrés sinon.
 export const CHORDS: Record<string, readonly [frets: string, root: number, suffix: string]> = {
   "Lam": ["002210", 9, "m"],
   "Do": ["332010", 0, ""], // Do avec basse Sol
@@ -31,6 +39,33 @@ export const CHORDS: Record<string, readonly [frets: string, root: number, suffi
   "Sim": ["224432", 11, "m"],
   "Sidim": ["x2343x", 11, "dim"],
   "Fa#dim": ["xx4212", 6, "dim"],
+
+  "Do#": ["x46664", 1, ""],
+  "Mib": ["x68886", 3, ""],
+  "Fa#": ["244322", 6, ""],
+  "Sol#": ["466544", 8, ""],
+  "Sib": ["x13331", 10, ""],
+  "Si": ["x24442", 11, ""],
+
+  "Dom": ["x35543", 0, "m"],
+  "Do#m": ["x46654", 1, "m"],
+  "Mibm": ["x68876", 3, "m"],
+  "Fam": ["133111", 5, "m"],
+  "Fa#m": ["244222", 6, "m"],
+  "Solm": ["355333", 7, "m"],
+  "Sol#m": ["466444", 8, "m"],
+  "Sibm": ["x13321", 10, "m"],
+
+  "Dodim": ["x3454x", 0, "dim"],
+  "Do#dim": ["x4565x", 1, "dim"],
+  "Rédim": ["xx0131", 2, "dim"],
+  "Mibdim": ["xx1242", 3, "dim"],
+  "Midim": ["x7898x", 4, "dim"],
+  "Fadim": ["xx3101", 5, "dim"],
+  "Soldim": ["xx5323", 7, "dim"],
+  "Sol#dim": ["xx6434", 8, "dim"],
+  "Ladim": ["xx7545", 9, "dim"],
+  "Sibdim": ["xx8656", 10, "dim"],
 };
 
 // Case de chaque corde (null = non jouée), et notes MIDI correspondantes du grave à l'aigu
@@ -58,62 +93,67 @@ export const DEFAULT_INSTRUMENT = "Guitare acier";
 
 export const DEFAULT_SCALE = "La mineur (Lam)";
 
-// Grilles diatoniques par tonalité : [hauteur % 12 -> nom de l'accord]
-export const SCALE_HARMONY: Record<string, Record<number, string>> = {
-  "La mineur (Lam)": {
-    9: "Lam", // La
-    11: "Sidim", // Si (Sim contient un Fa#, hors tonalité)
-    0: "Do", // Do
-    2: "Rém", // Ré
-    4: "Mim", // Mi
-    5: "Fa", // Fa
-    7: "Sol", // Sol
-  },
-  "Do Majeur (Do)": {
-    0: "Do", // Do
-    2: "Rém", // Ré
-    4: "Mim", // Mi
-    5: "Fa", // Fa
-    7: "Sol", // Sol
-    9: "Lam", // La
-    11: "Sidim", // Si
-  },
-  "Mi mineur (Mim)": {
-    4: "Mim",
-    6: "Fa#dim",
-    7: "Sol",
-    9: "Lam",
-    11: "Sim",
-    0: "Do",
-    2: "Ré",
-  },
-  "Sol Majeur (Sol)": {
-    7: "Sol",
-    9: "Lam",
-    11: "Sim",
-    0: "Do",
-    2: "Ré",
-    4: "Mim",
-    6: "Fa#dim",
-  },
+/** Nom (français) de l'accord d'une fondamentale et d'un suffixe : clé de CHORDS. */
+function chordOf(root: number, suffix: string): string {
+  return NOTE_NAMES.fr[mod(root, 12)] + suffix;
+}
+
+// Degrés d'une gamme (demi-tons depuis la tonique) et accord porté par chacun
+const DEGREES: Record<Quality, [step: number, suffix: string][]> = {
+  Majeur: [[0, ""], [2, "m"], [4, "m"], [5, ""], [7, ""], [9, "m"], [11, "dim"]],
+  mineur: [[0, "m"], [2, "dim"], [3, ""], [5, "m"], [7, "m"], [8, ""], [10, ""]],
 };
 
-/** Tonalités dans l'ordre de la liste déroulante. */
-export const SCALES = Object.keys(SCALE_HARMONY);
+// Notes étrangères à la gamme, en demi-tons depuis la tonique de la gamme majeure, et accord
+// majeur qui les contient (fondamentale en demi-tons depuis cette même tonique) : la dominante
+// du degré voisin quand la note en est la sensible, un accord emprunté au mineur sinon.
+// En Do Majeur : Do# -> La, Mib -> Mib, Fa# -> Ré, Sol# -> Mi, Sib -> Sib.
+const CHROMATIC_CHORDS: [step: number, root: number][] = [[1, 9], [3, 3], [6, 2], [8, 4], [10, 10]];
 
-// Noms des notes par notation : française (Do Ré Mi) ou anglo-saxonne (C D E)
-export const NOTE_NAMES: Record<Notation, string[]> = {
-  fr: ["Do", "Do#", "Ré", "Mib", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "Sib", "Si"],
-  en: ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"],
-};
+// Les 24 tonalités, dans l'ordre de la liste déroulante : le cycle des quintes, chaque tonalité
+// majeure suivie de sa relative mineure
+const KEYS: Key[] = Array.from({ length: 12 }, (_, i): Key[] => [
+  [mod(7 * i, 12), "Majeur"],
+  [mod(7 * i + 9, 12), "mineur"],
+]).flat();
+
+function scaleId([root, quality]: Key): string {
+  return `${NOTE_NAMES.fr[root]} ${quality} (${chordOf(root, DEGREES[quality][0][1])})`;
+}
 
 // Tonique et mode de chaque tonalité, pour nommer la tonalité obtenue après transposition
-export const SCALE_ROOTS: Record<string, Key> = {
-  "La mineur (Lam)": [9, "mineur"],
-  "Do Majeur (Do)": [0, "Majeur"],
-  "Mi mineur (Mim)": [4, "mineur"],
-  "Sol Majeur (Sol)": [7, "Majeur"],
-};
+export const SCALE_ROOTS: Record<string, Key> = Object.fromEntries(KEYS.map((key) => [scaleId(key), key]));
+
+/** Tonalités dans l'ordre de la liste déroulante. */
+export const SCALES = Object.keys(SCALE_ROOTS);
+
+// Grilles diatoniques par tonalité : [hauteur % 12 -> nom de l'accord]. Les notes étrangères à
+// la gamme n'y figurent pas.
+export const SCALE_HARMONY: Record<string, Record<number, string>> = Object.fromEntries(
+  KEYS.map(([root, quality]) => [
+    scaleId([root, quality]),
+    Object.fromEntries(DEGREES[quality].map(([step, suffix]) => [mod(root + step, 12), chordOf(root + step, suffix)])),
+  ]),
+);
+
+// Grilles complètes : les sept notes de la gamme, plus un accord pour chacune des cinq autres
+export const FULL_HARMONY: Record<string, Record<number, string>> = Object.fromEntries(
+  KEYS.map(([root, quality]) => {
+    const major = quality === "Majeur" ? root : root + 3; // tonique de la gamme majeure (relative)
+    const id = scaleId([root, quality]);
+    const chromatic = CHROMATIC_CHORDS.map(([step, chordRoot]) => [mod(major + step, 12), chordOf(major + chordRoot, "")]);
+    return [id, { ...Object.fromEntries(chromatic), ...SCALE_HARMONY[id] }];
+  }),
+);
+
+/**
+ * Grille d'une tonalité. `chromatic` : avec un accord pour les notes étrangères à la gamme ;
+ * sinon elles reçoivent l'accord de repli (Lam), comme dans l'application de bureau.
+ */
+export function harmonyMap(scaleKey: string, chromatic: boolean): Record<number, string> {
+  const maps = chromatic ? FULL_HARMONY : SCALE_HARMONY;
+  return maps[scaleKey] ?? maps[DEFAULT_SCALE];
+}
 
 // Profils de Krumhansl-Kessler : poids de chaque degré (en demi-tons depuis la tonique) dans une
 // tonalité majeure ou mineure, pour reconnaître la tonalité d'un morceau

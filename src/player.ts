@@ -1,4 +1,4 @@
-import { DEFAULT_SCALE, GATE_RATIO, MAX_STRUMS, OPEN_STRINGS, SCALE_HARMONY, type Mode } from "./guitar";
+import { GATE_RATIO, MAX_STRUMS, OPEN_STRINGS, harmonyMap, type Mode } from "./guitar";
 import { keepHighestNotes, strumLayout, sweepDelay, type Note } from "./logic";
 
 /** Réglages lus par le moteur à chaque pas. */
@@ -12,6 +12,12 @@ export interface LiveParams {
   transpose: number;
   keyShift: number;
   program: number;
+  /** Une note à la fois : une nouvelle note arrête la précédente. */
+  mono: boolean;
+  /** Les notes étrangères à la gamme reçoivent leur propre accord au lieu de l'accord de repli. */
+  chromatic: boolean;
+  /** Boucle [début, fin] en secondes du fichier source : arrivée à la fin, la lecture repart du début. */
+  loop: readonly [start: number, end: number] | null;
 }
 
 /** Sortie sonore. `time` est l'heure exacte de l'événement, sur l'horloge donnée à `tick`. */
@@ -129,8 +135,8 @@ function bisectRight(values: number[], x: number): number {
 export class LivePlayer {
   static readonly LATE_MAX = 0.05; // retard maximal rattrapé pour placer un strum à son heure exacte (s)
 
-  readonly allNotes: Note[];
-  readonly melodyNotes: Note[];
+  private allNotes: Note[] = [];
+  private melodyNotes: Note[] = [];
   readonly duration: number;
   currentChord = "";
   position = 0.0; // position dans le fichier source (s), lue par l'interface
@@ -163,11 +169,19 @@ export class LivePlayer {
     private readonly getParams: () => LiveParams,
     private readonly out: MidiOut,
     startTime: number,
+    /** Durée du morceau ; par défaut, la fin de la dernière note. */
+    duration?: number,
   ) {
+    this.setNotes(notes);
+    this.duration = duration ?? Math.max(0, ...this.allNotes.map((n) => n.start + n.duration));
+    this.last = this.now = startTime;
+  }
+
+  /** Change les notes jouées (choix des pistes) ; la lecture continue à la même position. */
+  setNotes(notes: Note[]): void {
     this.allNotes = [...notes].sort((a, b) => a.start - b.start);
     this.melodyNotes = keepHighestNotes(this.allNotes);
-    this.duration = Math.max(...this.allNotes.map((n) => n.start + n.duration));
-    this.last = this.now = startTime;
+    this.melody = null; // le prochain pas reprend le nouveau jeu de notes
   }
 
   /** Avance (delta > 0) ou recule (delta < 0) dans le fichier source. */
@@ -241,6 +255,7 @@ export class LivePlayer {
     this.now = now;
     const p = this.getParams();
     const speed = p.speed;
+    const before = this.srcTime;
     if (!this.paused) this.srcTime += (now - this.last) * speed;
     this.last = now;
     if (p.program !== this.program) {
@@ -248,8 +263,14 @@ export class LivePlayer {
       this.out.setInstrument(p.program);
     }
 
-    // Déplacements demandés par l'interface, et changement du jeu de notes (mélodie seule)
+    // Boucle : la fin vient d'être franchie, on repart du début
     let resync = false;
+    if (p.loop && before < p.loop[1] && this.srcTime >= p.loop[1]) {
+      this.srcTime = Math.max(0.0, p.loop[0]);
+      resync = true;
+    }
+
+    // Déplacements demandés par l'interface, et changement du jeu de notes (mélodie seule)
     const seeks = this.seeks;
     this.seeks = [];
     for (const [kind, value] of seeks) {
@@ -276,7 +297,21 @@ export class LivePlayer {
     }
     if (this.paused) return true;
 
-    const harmonyMap = SCALE_HARMONY[p.scale] ?? SCALE_HARMONY[DEFAULT_SCALE];
+    if (p.mono && this.active.size > 1) {
+      // Une note à la fois : seule la dernière commencée reste (la plus aiguë, si elles commencent ensemble)
+      let kept: Note | null = null;
+      for (const n of this.active.keys()) {
+        if (!kept || n.start > kept.start || (n.start === kept.start && n.pitch > kept.pitch)) kept = n;
+      }
+      for (const n of [...this.active.keys()]) {
+        if (n === kept) continue;
+        this.silence(now, n);
+        this.generation.set(n, (this.generation.get(n) ?? 0) + 1); // annule ses frappes en attente
+        this.active.delete(n);
+      }
+    }
+
+    const harmony = harmonyMap(p.scale, p.chromatic);
     const strums = Math.max(1, Math.min(MAX_STRUMS, p.strums));
     for (const [note, state] of [...this.active]) {
       const pos = srcTime - note.start;
@@ -288,7 +323,7 @@ export class LivePlayer {
       const slot = note.duration / strums;
       const index = Math.min(Math.trunc(pos / slot), strums - 1);
       const boundary = index * slot;
-      const [chord, layout] = strumLayout(note, p.mode, harmonyMap, p.transpose, p.keyShift);
+      const [chord, layout] = strumLayout(note, p.mode, harmony, p.transpose, p.keyShift);
       const soundKey = `${p.mode}|${p.mode === "accord" ? chord : p.keyShift}|${p.transpose}`;
 
       const newStrum = state.last === null || boundary > state.last + 1e-9;

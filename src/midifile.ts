@@ -5,6 +5,7 @@
 export type MidiEvent =
   | { delta: number; kind: "noteOn" | "noteOff"; channel: number; note: number; velocity: number }
   | { delta: number; kind: "tempo"; tempo: number }
+  | { delta: number; kind: "trackName"; name: string }
   | { delta: number; kind: "endOfTrack" | "other" };
 
 export interface MidiData {
@@ -106,6 +107,8 @@ function readTrack(reader: Reader): MidiEvent[] {
       if (metaType === 0x51) {
         if (data.length < 3) throw new Error("méta-message de tempo invalide");
         track.push({ delta, kind: "tempo", tempo: (data[0] << 16) | (data[1] << 8) | data[2] });
+      } else if (metaType === 0x03) {
+        track.push({ delta, kind: "trackName", name: data.map((c) => String.fromCharCode(c)).join("") });
       } else {
         track.push({ delta, kind: metaType === 0x2f ? "endOfTrack" : "other" });
       }
@@ -150,29 +153,29 @@ export function parseMidi(bytes: Uint8Array): MidiData {
 }
 
 /**
- * Tous les messages de toutes les pistes dans l'ordre de lecture, chacun avec le temps écoulé
- * depuis le précédent en secondes, changements de tempo pris en compte (c'est l'itération d'un
- * MidiFile de mido).
+ * Tous les messages de toutes les pistes dans l'ordre de lecture, chacun avec sa piste et le
+ * temps écoulé depuis le précédent en secondes, changements de tempo pris en compte (c'est
+ * l'itération d'un MidiFile de mido).
  */
-export function playbackMessages(mid: MidiData): { seconds: number; event: MidiEvent }[] {
+export function playbackMessages(mid: MidiData): { seconds: number; event: MidiEvent; track: number }[] {
   // Les pistes d'un fichier de type 2 ne sont pas synchrones : elles ne peuvent pas être fusionnées
   if (mid.type === 2) throw new Error("fichier MIDI de type 2 (pistes asynchrones) non pris en charge");
   if (mid.ticksPerBeat < 0) throw new Error("fichier MIDI à division SMPTE non pris en charge");
 
-  const merged: { tick: number; event: MidiEvent }[] = [];
-  for (const track of mid.tracks) {
+  const merged: { tick: number; event: MidiEvent; track: number }[] = [];
+  mid.tracks.forEach((events, track) => {
     let now = 0;
-    for (const event of track) {
+    for (const event of events) {
       now += event.delta;
-      merged.push({ tick: now, event });
+      merged.push({ tick: now, event, track });
     }
-  }
+  });
   merged.sort((a, b) => a.tick - b.tick); // tri stable : à temps égal, l'ordre des pistes est conservé
 
-  const messages: { seconds: number; event: MidiEvent }[] = [];
+  const messages: { seconds: number; event: MidiEvent; track: number }[] = [];
   let tempo = DEFAULT_TEMPO;
   let lastTick = 0;
-  for (const { tick, event } of merged) {
+  for (const { tick, event, track } of merged) {
     if (event.kind === "endOfTrack") continue; // sa durée est reportée sur le message suivant
     const delta = tick - lastTick;
     lastTick = tick;
@@ -181,7 +184,7 @@ export function playbackMessages(mid: MidiData): { seconds: number; event: MidiE
       if (mid.ticksPerBeat === 0) throw new Error("division nulle dans l'en-tête du fichier");
       seconds = delta * ((tempo * 1e-6) / mid.ticksPerBeat);
     }
-    messages.push({ seconds, event });
+    messages.push({ seconds, event, track });
     if (event.kind === "tempo") tempo = event.tempo;
   }
   return messages;

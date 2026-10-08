@@ -212,9 +212,12 @@ button:disabled {
   touch-action: pan-x pan-y;
 }
 
-/* En lecture, un glissement sur la frise déplace la lecture au lieu de faire défiler */
 .tl-scroll.seekable {
   cursor: pointer;
+}
+
+/* En lecture, un glissement sur la frise déplace la lecture au lieu de faire défiler */
+.tl-scroll.drag-seek {
   touch-action: none;
 }
 
@@ -242,6 +245,58 @@ button:disabled {
 
 .transport .pause {
   min-width: 8em;
+}
+
+.loop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.loop button {
+  min-width: 2.6em;
+}
+
+.loop label {
+  margin-left: 4px;
+}
+
+#lbl-loop {
+  margin: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Pistes ---------------------------------------------------------------- */
+
+.tracks {
+  margin-top: 8px;
+}
+
+.tracks summary {
+  cursor: pointer;
+}
+
+.tracks-list {
+  display: grid;
+  gap: 3px;
+  max-height: 11.5em;
+  margin: 6px 0;
+  overflow-y: auto;
+}
+
+.tracks-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.file-key {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 8px;
 }
 
 .position {

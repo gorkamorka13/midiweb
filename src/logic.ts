@@ -5,7 +5,6 @@
 import {
   CHORD_FRETS,
   DEFAULT_INSTRUMENT,
-  DEFAULT_SCALE,
   GATE_RATIO,
   GUITAR_HIGH,
   GUITAR_LOW,
@@ -13,7 +12,7 @@ import {
   KEY_PROFILES,
   MAX_STRUMS,
   OPEN_STRINGS,
-  SCALE_HARMONY,
+  harmonyMap,
   mod,
   transposedChordName,
   type Key,
@@ -29,6 +28,23 @@ export interface Note {
   start: number;
   duration: number;
   velocity: number;
+  /** Piste et canal d'où vient la note (0 = premier). */
+  track: number;
+  channel: number;
+}
+
+/** Ce qui est lu dans un fichier : ses notes (aucune si le fichier n'en contient pas) et le nom de ses pistes. */
+export interface MidiInput {
+  notes: Note[];
+  trackNames: Map<number, string>;
+}
+
+/** Partie d'un morceau : les notes d'un canal d'une piste. */
+export interface Part {
+  track: number;
+  channel: number;
+  name: string;
+  count: number;
 }
 
 /** Corde à jouer : corde (0 = Mi grave ... 5 = Mi aigu), case, hauteur MIDI. */
@@ -38,47 +54,66 @@ export type StringHit = readonly [string: number, fret: number, pitch: number];
  * Extrait toutes les notes (hauteur, début et durée en secondes, vélocité) d'un fichier MIDI,
  * ou MIDICSV si son extension est .csv ou .txt.
  */
-export function analyzeInputMidi(fileName: string, bytes: Uint8Array): Note[] {
+export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
   const isCsv = MIDICSV_EXTENSIONS.some((ext) => fileName.toLowerCase().endsWith(ext));
   const mid = isCsv ? readMidicsv(new TextDecoder("utf-8").decode(bytes)) : parseMidi(bytes);
   const notes: Note[] = [];
-  const active = new Map<string, { pitch: number; start: number; velocity: number }>(); // canal:note -> début
+  type Begun = { pitch: number; start: number; velocity: number; track: number; channel: number };
+  const active = new Map<string, Begun>(); // canal:note -> début
   let now = 0.0;
 
   // La lecture fusionne les pistes et gère les changements de tempo
-  for (const { seconds, event } of playbackMessages(mid)) {
+  for (const { seconds, event, track } of playbackMessages(mid)) {
     now += seconds;
     if (event.kind !== "noteOn" && event.kind !== "noteOff") continue;
     if (event.channel === 9) continue; // canal 10 = percussions : pas des hauteurs de note
     const key = `${event.channel}:${event.note}`;
     if (event.kind === "noteOn" && event.velocity > 0) {
-      if (!active.has(key)) active.set(key, { pitch: event.note, start: now, velocity: event.velocity });
+      if (!active.has(key)) {
+        active.set(key, { pitch: event.note, start: now, velocity: event.velocity, track, channel: event.channel });
+      }
     } else {
       const begun = active.get(key);
       if (begun) {
         active.delete(key);
-        notes.push({
-          pitch: begun.pitch,
-          start: begun.start,
-          duration: Math.max(0.2, now - begun.start),
-          velocity: begun.velocity,
-        });
+        notes.push({ ...begun, duration: Math.max(0.2, now - begun.start) });
       }
     }
   }
 
   // Notes jamais terminées : durée par défaut
-  for (const { pitch, start, velocity } of active.values()) {
-    notes.push({ pitch, start, duration: 0.5, velocity });
-  }
+  for (const begun of active.values()) notes.push({ ...begun, duration: 0.5 });
 
   notes.sort((a, b) => a.start - b.start);
 
-  if (!notes.length) {
-    // Valeur de secours si le fichier est vide
-    return [{ pitch: 60, start: 0.0, duration: 2.0, velocity: 90 }];
-  }
+  const trackNames = new Map<number, string>();
+  mid.tracks.forEach((events, track) => {
+    const named = events.find((event) => event.kind === "trackName");
+    if (named?.kind === "trackName" && named.name.trim()) trackNames.set(track, named.name.trim());
+  });
+  return { notes, trackNames };
+}
+
+/**
+ * Notes d'un fichier comme les lit l'application de bureau : un fichier sans note est remplacé
+ * par une note de secours.
+ */
+export function analyzeInputMidi(fileName: string, bytes: Uint8Array): Note[] {
+  const { notes } = readMidiInput(fileName, bytes);
+  if (!notes.length) return [{ pitch: 60, start: 0.0, duration: 2.0, velocity: 90, track: 0, channel: 0 }];
   return notes;
+}
+
+/** Parties du morceau (une par canal de chaque piste qui a des notes), dans l'ordre des pistes. */
+export function listParts({ notes, trackNames }: MidiInput): Part[] {
+  const parts = new Map<string, Part>();
+  for (const { track, channel } of notes) {
+    const id = `${track}:${channel}`;
+    const part = parts.get(id) ?? { track, channel, name: trackNames.get(track) ?? "", count: 0 };
+    part.count++;
+    parts.set(id, part);
+  }
+  return [...parts.values()].sort((a, b) => a.track - b.track || a.channel - b.channel);
 }
 
 /** Somme compensée (Neumaier), celle de sum() en Python : les deux versions classent ainsi les
@@ -239,6 +274,10 @@ export interface ExportSettings {
   transpose?: number;
   keyShift?: number;
   program?: number;
+  /** Une note à la fois : une note s'arrête quand la suivante commence. */
+  mono?: boolean;
+  /** Les notes étrangères à la gamme reçoivent leur propre accord au lieu de l'accord de repli. */
+  chromatic?: boolean;
 }
 
 /** Génère un fichier MIDI avec découpage rythmique et accord guitare pour chaque note. */
@@ -253,6 +292,8 @@ export function generateProcessedMidi(
     transpose = 0,
     keyShift = 0,
     program = INSTRUMENTS[DEFAULT_INSTRUMENT],
+    mono = false,
+    chromatic = false,
   }: ExportSettings,
 ): { midi: Uint8Array<ArrayBuffer>; chords: string } {
   const ticksPerBeat = 480;
@@ -263,17 +304,23 @@ export function generateProcessedMidi(
     { delta: 0, bytes: [0xc0, program] },
   ];
 
-  const harmonyMap = SCALE_HARMONY[scaleKey] ?? SCALE_HARMONY[DEFAULT_SCALE];
+  const harmony = harmonyMap(scaleKey, chromatic);
   const played: [on: number, off: number, pitch: number, velocity: number][] = []; // secondes absolues
   const chordsUsed: string[] = [];
 
-  for (const note of inputNotes) {
+  // Une note à la fois : chaque note est coupée au début de la suivante (la plus aiguë de celles
+  // qui commencent ensemble est la dernière, donc la seule entendue)
+  const notes = mono ? [...inputNotes].sort((a, b) => a.start - b.start || a.pitch - b.pitch) : inputNotes;
+  notes.forEach((note, i) => {
     const [chordName, evs] = noteEvents(
-      note, mode, harmonyMap, strumsCount, speedFactor, strumDelayMs, transpose, keyShift);
+      note, mode, harmony, strumsCount, speedFactor, strumDelayMs, transpose, keyShift);
     chordsUsed.push(transposedChordName(chordName, transpose));
     const baseStart = note.start / speedFactor;
-    for (const [on, off, p, vel] of evs) played.push([baseStart + on, baseStart + off, p, vel]);
-  }
+    const cut = mono && i + 1 < notes.length ? notes[i + 1].start / speedFactor : Infinity;
+    for (const [on, off, p, vel] of evs) {
+      if (baseStart + on < cut) played.push([baseStart + on, Math.min(baseStart + off, cut), p, vel]);
+    }
+  });
 
   // Une corde rejouée avant la fin de sa note précédente : on coupe l'ancienne à cet instant,
   // sinon son note_off éteindrait la nouvelle note.

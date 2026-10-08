@@ -6,6 +6,7 @@ export const COL_GRID = "#8a8f98";
 export const COL_NOTE = "#3b6fb6";
 export const COL_NOTE_OFF = "#cfd4dc";
 export const COL_ACCENT = "#e8590c";
+export const COL_LOOP = "rgb(59 111 182 / 0.14)"; // fond de la boucle
 export const COL_TEXT = "#1f2328";
 export const COL_MUTED = "#6b7280";
 

@@ -6,15 +6,15 @@ import { LivePlayer, type LiveParams, type MidiOut } from "../src/player";
 
 const TICK = 0.01;
 const NOTES: Note[] = [
-  { pitch: 69, start: 0.0, duration: 1.0, velocity: 90 }, // La
-  { pitch: 72, start: 1.0, duration: 1.0, velocity: 90 }, // Do
-  { pitch: 76, start: 2.0, duration: 1.0, velocity: 90 }, // Mi
+  { pitch: 69, start: 0.0, duration: 1.0, velocity: 90, track: 0, channel: 0 }, // La
+  { pitch: 72, start: 1.0, duration: 1.0, velocity: 90, track: 0, channel: 0 }, // Do
+  { pitch: 76, start: 2.0, duration: 1.0, velocity: 90, track: 0, channel: 0 }, // Mi
 ];
 
 function setup(changes: Partial<LiveParams> = {}) {
   const params: LiveParams = {
     mode: "accord", scale: "La mineur (Lam)", speed: 1.0, delayMs: 15, strums: 2, melody: false,
-    transpose: 0, keyShift: 0, program: 25, ...changes,
+    transpose: 0, keyShift: 0, program: 25, mono: false, chromatic: false, loop: null, ...changes,
   };
   const events: [kind: "on" | "off", pitch: number, time: number][] = [];
   const sounding = new Set<number>();
