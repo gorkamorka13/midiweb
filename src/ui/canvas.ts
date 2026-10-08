@@ -1,18 +1,44 @@
 // Affichage : couleurs et outils de dessin communs à la frise et au diagramme d'accord
 
-export const COL_BG = "#ffffff";
-export const COL_BORDER = "#c8ccd2";
-export const COL_GRID = "#8a8f98";
-export const COL_NOTE = "#3b6fb6";
-export const COL_NOTE_OFF = "#cfd4dc";
-export const COL_ACCENT = "#e8590c";
-export const COL_LOOP = "rgb(59 111 182 / 0.14)"; // fond de la boucle
-export const COL_TEXT = "#1f2328";
-export const COL_MUTED = "#6b7280";
+/** Couleurs des canevas : celles du thème clair, puis celles du thème affiché (`refreshColors`). */
+export const colors = {
+  bg: "#ffffff",
+  border: "#d8dce3",
+  grid: "#8a8f98",
+  note: "#3b6fb6",
+  noteOff: "#cdd3dc",
+  accent: "#e8590c",
+  loop: "rgb(59 111 182 / 0.14)", // fond de la boucle
+  text: "#1b2028",
+  muted: "#5d6673",
+};
+
+// Variable de style.css qui donne chaque couleur
+const TOKENS: Record<keyof typeof colors, string> = {
+  bg: "--surface",
+  border: "--border",
+  grid: "--grid",
+  note: "--note",
+  noteOff: "--note-off",
+  accent: "--accent",
+  loop: "--loop",
+  text: "--text",
+  muted: "--muted",
+};
+
+/** Relit les couleurs du thème affiché ; les canevas sont ensuite à redessiner. */
+export function refreshColors(): void {
+  const style = getComputedStyle(document.documentElement);
+  for (const key of Object.keys(TOKENS) as (keyof typeof colors)[]) {
+    const value = style.getPropertyValue(TOKENS[key]).trim();
+    if (value) colors[key] = value;
+  }
+}
 
 const FAMILY = '"Segoe UI", system-ui, -apple-system, sans-serif';
 export const FONT_SMALL = `11px ${FAMILY}`;
 export const FONT_SMALL_BOLD = `bold 11px ${FAMILY}`;
+export const FONT_NAME = `600 17px ${FAMILY}`; // noms des accords et des notes sur la frise
 export const FONT_MARK = `15px ${FAMILY}`;
 
 /** Dimensionne le canevas en pixels CSS, net sur les écrans à haute densité, et le vide. */
@@ -28,7 +54,7 @@ export function prepare(canvas: HTMLCanvasElement, width: number, height: number
   }
   const ctx = canvas.getContext("2d")!;
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  ctx.fillStyle = COL_BG;
+  ctx.fillStyle = colors.bg;
   ctx.fillRect(0, 0, width, height);
   return ctx;
 }

@@ -4,24 +4,26 @@ Application web qui lit un fichier MIDI, harmonise chaque note avec un accord de
 en strumming en temps réel dans le navigateur, et exporte le résultat dans un nouveau fichier MIDI.
 
 C'est le portage de l'application de bureau `midi.py` (Python + Tkinter,
-<https://github.com/gorkamorka13/midi>). Les fonctions, les règles musicales et les libellés sont
-les mêmes ; le README de l'application de bureau reste la référence pour le détail des réglages,
-de l'harmonisation et du strumming.
+<https://github.com/gorkamorka13/midi>). Les fonctions, les règles musicales et les noms des
+réglages sont les mêmes ; le README de l'application de bureau reste la référence pour le détail
+des réglages, de l'harmonisation et du strumming.
 
 Tout se passe dans le navigateur : il n'y a pas de serveur, et le fichier choisi ne quitte pas la
 machine.
 
 ## Utilisation
 
-1. Cliquer sur **Parcourir...** (ou déposer un fichier sur la page) et choisir un fichier MIDI
-   (`.mid`, `.midi`) ou MIDICSV (`.csv`, `.txt`).
+1. Cliquer sur **Ouvrir** (ou déposer un fichier sur la page) et choisir un fichier MIDI
+   (`.mid`, `.midi`) ou MIDICSV (`.csv`, `.txt`). Sans fichier sous la main, **Essayer un exemple**
+   charge « Au clair de la lune ».
 2. Si le fichier a plusieurs pistes, la liste **Pistes jouées** s'ouvre avec une seule piste
    cochée : celle qui porte probablement la mélodie. Cocher une autre piste si le choix est mauvais
    (**Mélodie probable** y revient, **Toutes** les joue toutes). Jouées ensemble, les pistes d'un
    arrangement donnent chacune leurs accords et tout se superpose. Les notes des pistes décochées
    restent dessinées en gris sur la frise.
-3. Régler la tonalité, le mode, le strumming, la vitesse et le volume (modifiables aussi en cours
-   de lecture). Les réglages sont retenus par le navigateur d'une visite à l'autre.
+3. Régler la tonalité, le mode, le strumming et le volume dans le panneau des réglages, et la
+   **Vitesse** avec le curseur placé sous la frise (**x1** revient à la vitesse du fichier). Tout
+   est modifiable aussi en cours de lecture, et retenu par le navigateur d'une visite à l'autre.
 4. Cliquer sur **Écouter**. À la première écoute, le son de l'instrument est chargé depuis le site.
 5. Se déplacer avec **Début**, **-5 s**, **+5 s** ou en cliquant sur la frise, pendant la lecture
    comme à l'arrêt : à l'arrêt, on choisit ainsi l'endroit d'où partira la lecture.
@@ -31,8 +33,27 @@ machine.
 7. **Arrêter** stoppe la lecture et revient à la position de départ. **Exporter le MIDI...**
    télécharge le morceau entier (pistes cochées) avec les réglages affichés.
 
+### Barre, menu et petits écrans
+
+- La barre du haut montre le fichier ouvert, avec **Ouvrir** et **Exporter**. Le bouton à trois points ouvre
+  le menu : ouvrir un fichier, charger un des deux exemples, exporter, choisir le thème, voir les
+  raccourcis clavier, **À propos**, et **Réinitialiser les réglages**.
+- **Thème** : **Système** suit le réglage clair ou sombre de l'appareil ; **Clair** et **Sombre**
+  l'imposent. Le choix est retenu par le navigateur.
+- **Réinitialiser les réglages** remet tous les réglages et le thème à leur valeur d'origine, après
+  confirmation. Le fichier ouvert et la lecture en cours sont conservés.
+- En dessous de 960 px de large, le panneau des réglages devient un tiroir : le bouton à trois traits de la
+  barre l'ouvre et le ferme, comme un clic à côté du tiroir ou la touche Échap. Le lecteur reste
+  affiché, et le transport reste en bas de l'écran.
+- En dessous de 600 px, **Ouvrir** et **Exporter** ne sont plus que dans le menu, et les boutons de
+  déplacement ne montrent que leur icône.
+
 ### Réglages propres à la version web
 
+- **Accords lus dans le fichier** : quand plusieurs notes sonnent ensemble dans le fichier (toutes
+  pistes confondues, cochées ou non), l'accord joué est celui qu'elles forment, majeur, mineur ou
+  diminué, amené dans la **Tonalité globale**. Une note qui sonne seule reçoit, comme dans
+  l'application de bureau, l'accord que la gamme lui donne.
 - **Tonalité du morceau** : la tonalité détectée est proposée ; si elle est fausse, en choisir une
   autre dans la liste. Le morceau est transposé de cette tonalité vers la **Tonalité globale**.
 - **Une seule note ou un seul accord à la fois** (coché au départ) : une nouvelle note coupe la
@@ -72,7 +93,9 @@ pas jouée par-dessus le motif, et seul le premier chiffrage de mesure du fichie
 | ← et → | Reculer et avancer de 5 s. |
 | Début (Home) | Revenir au début. |
 
-Les flèches gardent leur rôle habituel quand un curseur, un champ ou une liste a le focus.
+Les flèches gardent leur rôle habituel quand un curseur, un champ ou une liste a le focus, et
+Espace actionne le bouton qui a le focus dans la barre. Les raccourcis sont suspendus tant que le
+menu, le tiroir des réglages ou un message est ouvert.
 
 ## Fichiers d'exemple
 
@@ -83,7 +106,8 @@ Le dossier `examples/` contient deux fichiers MIDI simples (« Au clair de la lu
 - `au_clair_de_la_lune_3_pistes.mid` : mélodie, basse et accords sur trois pistes, pour essayer
   le choix des pistes.
 
-Ils sont écrits par `python tools/make_examples.py`.
+Ils sont écrits par `python tools/make_examples.py`, et se chargent aussi depuis le menu de
+l'application.
 
 ## Développement
 
@@ -111,6 +135,8 @@ de fichiers statiques. Les chemins sont relatifs : il fonctionne aussi dans un s
 | `src/player.ts` | Moteur de lecture temps réel. | `LivePlayer` |
 | `src/audio.ts` | Sortie sonore (Web Audio) et conduite du moteur. | `pygame.midi` |
 | `src/ui/timeline.ts`, `src/ui/chord.ts` | Frise du morceau et diagramme d'accord. | `draw_timeline`, `draw_chord` |
+| `src/ui/canvas.ts` | Outils de dessin et couleurs des canevas, lues dans le thème affiché. | |
+| `src/ui/shell.ts` | Tiroir des réglages, menu, thème, icônes des boutons. | |
 | `src/main.ts`, `index.html`, `src/style.css` | Page et réglages. | `GuitarMidiApp` |
 
 ## Tests
@@ -142,13 +168,15 @@ python tools/make_fixtures.py --local chemin/vers/morceau.mid
 | Échantillons | Aucun téléchargement. | Servis avec le site (`public/soundfonts`) et chargés à la première écoute de chaque instrument. |
 | Réglages en lecture | Relus toutes les 50 ms. | Entendus environ 80 ms après le changement : le moteur programme les notes avec 80 ms d'avance pour les placer à leur heure exacte. |
 | Fichiers | Boîtes de dialogue de Windows. | Sélecteur de fichier du navigateur ou dépôt sur la page ; l'export est téléchargé sous le nom `<fichier>_strum.mid`. |
-| Fenêtre | Taille fixe. | Page qui s'adapte à la largeur de l'écran. |
+| Fenêtre | Taille fixe. | Page qui s'adapte à la largeur de l'écran : réglages à côté du lecteur, ou en tiroir sur petit écran. |
+| Thème | Clair. | Clair ou sombre, selon le système ou au choix. |
 | Curseurs | Sans valeur affichée. | La valeur est écrite à côté du curseur. |
 | Fichiers MIDI à division SMPTE | Lus avec des temps faux. | Refusés avec un message. |
 | Pause | Absente : Arrêter puis Écouter repart du début. | Bouton **Pause / Reprendre**. |
 | Tonalités | Quatre. | Les 24 tonalités majeures et mineures. |
 | Déplacement | Seulement pendant la lecture. | Aussi à l'arrêt : la lecture part de la position choisie. |
 | Pistes | Toutes les pistes sont jouées ensemble. | Choix des pistes jouées ; au chargement, seule la mélodie probable. |
+| Accords | Un accord par note, d'après la gamme. | L'accord que forment les notes qui sonnent ensemble dans le fichier ; d'après la gamme pour une note seule. |
 | Réglages de départ | « Mélodie seule » décochée. | « Mélodie seule » et « Une seule note ou un seul accord à la fois » cochées. |
 | Fichier sans note | Remplacé par une note de secours. | Refusé avec un message. |
 | Boucle, volume, raccourcis clavier, réglages retenus | Absents. | Présents. |

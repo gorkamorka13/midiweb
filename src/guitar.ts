@@ -93,8 +93,11 @@ export const DEFAULT_INSTRUMENT = "Guitare acier";
 
 export const DEFAULT_SCALE = "La mineur (Lam)";
 
+/** Accord reconnu dans le fichier : [fondamentale (classe de hauteur, 0 = Do), suffixe]. */
+export type ChordRef = readonly [root: number, suffix: string];
+
 /** Nom (français) de l'accord d'une fondamentale et d'un suffixe : clé de CHORDS. */
-function chordOf(root: number, suffix: string): string {
+export function chordOf(root: number, suffix: string): string {
   return NOTE_NAMES.fr[mod(root, 12)] + suffix;
 }
 

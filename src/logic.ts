@@ -12,9 +12,11 @@ import {
   KEY_PROFILES,
   MAX_STRUMS,
   OPEN_STRINGS,
+  chordOf,
   harmonyMap,
   mod,
   transposedChordName,
+  type ChordRef,
   type Key,
   type Mode,
   type Quality,
@@ -32,6 +34,8 @@ export interface Note {
   /** Piste et canal d'où vient la note (0 = premier). */
   track: number;
   channel: number;
+  /** Accord entendu dans le fichier quand la note commence (voir `harmonize`) ; absent : accord de la note. */
+  chord?: ChordRef;
 }
 
 /** Ce qui est lu dans un fichier : ses notes (aucune si le fichier n'en contient pas) et le nom de ses pistes. */
@@ -254,6 +258,73 @@ export function keepHighestNotes(notes: Note[], tolerance = 0.03): Note[] {
   return kept;
 }
 
+// Accords reconnus : suffixe et notes (demi-tons depuis la fondamentale), les accords diminués en dernier
+const TRIADS: [suffix: string, steps: number[]][] = [["", [0, 4, 7]], ["m", [0, 3, 7]], ["dim", [0, 3, 6]]];
+
+/**
+ * Accord formé par des hauteurs qui sonnent ensemble, ou null si moins de deux notes d'un même
+ * accord sonnent.
+ *
+ * L'accord retenu est celui qui contient le plus de ces notes et en laisse le moins de côté ; à
+ * égalité, celui dont la fondamentale est la note la plus grave, puis celui dont la fondamentale
+ * sonne, puis un accord majeur ou mineur plutôt que diminué.
+ */
+function chordOfPitches(pitches: number[]): ChordRef | null {
+  const bass = mod(Math.min(...pitches), 12);
+  const classes = new Set(pitches.map((p) => mod(p, 12)));
+  let best: ChordRef | null = null;
+  let bestRank: number[] = [];
+  for (let root = 0; root < 12; root++) {
+    TRIADS.forEach(([suffix, steps], order) => {
+      const triad = steps.map((step) => mod(root + step, 12));
+      if (triad.filter((c) => classes.has(c)).length < 2) return;
+      const inside = pitches.filter((p) => triad.includes(mod(p, 12))).length;
+      const rank = [2 * inside - pitches.length, Number(root === bass), Number(classes.has(root)), -order];
+      const gap = rank.map((r, i) => r - bestRank[i]).find((d) => d !== 0);
+      if (best === null || (gap !== undefined && gap > 0)) {
+        best = [root, suffix];
+        bestRank = rank;
+      }
+    });
+  }
+  return best;
+}
+
+/**
+ * Copie des notes, chacune avec l'accord entendu dans le fichier quand elle commence : celui que
+ * forment toutes les notes qui sonnent à cet instant (à `tolerance` secondes près), quelle que soit
+ * leur piste. Une note qui sonne seule n'en reçoit pas.
+ */
+export function harmonize(notes: Note[], tolerance = 0.03): Note[] {
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  const chords = new Map<Note, ChordRef | null>();
+  let sounding: Note[] = [];
+  let next = 0;
+  for (const note of sorted) {
+    const time = note.start + tolerance;
+    while (next < sorted.length && sorted[next].start <= time) sounding.push(sorted[next++]);
+    sounding = sounding.filter((n) => n.start + n.duration > time);
+    chords.set(note, sounding.length > 1 ? chordOfPitches(sounding.map((n) => n.pitch)) : null);
+  }
+  return notes.map((note) => {
+    const chord = chords.get(note);
+    return chord ? { ...note, chord } : { ...note };
+  });
+}
+
+/**
+ * Nom de l'accord d'une note, `keyShift` demi-tons plus haut : l'accord entendu dans le fichier
+ * s'il a été reconnu, sinon celui que la grille `harmonyMap` donne à la note.
+ */
+export function chordNameOf(
+  note: Pick<Note, "pitch" | "chord">,
+  harmonyMap: Record<number, string>,
+  keyShift = 0,
+): string {
+  if (note.chord) return chordOf(note.chord[0] + keyShift, note.chord[1]);
+  return harmonyMap[mod(note.pitch + keyShift, 12)] ?? "Lam";
+}
+
 /** Ramène une hauteur dans la tessiture de la guitare par sauts d'octave (la note reste la même). */
 export function toGuitarRange(pitch: number): number {
   while (pitch < GUITAR_LOW) pitch += 12;
@@ -269,14 +340,14 @@ export function toGuitarRange(pitch: number): number {
  * comme un capo.
  */
 export function strumLayout(
-  note: Pick<Note, "pitch">,
+  note: Pick<Note, "pitch" | "chord">,
   mode: Mode,
   harmonyMap: Record<number, string>,
   transpose = 0,
   keyShift = 0,
 ): [chordName: string, layout: StringHit[]] {
   let pitch = note.pitch + keyShift;
-  const chordName = harmonyMap[mod(pitch, 12)] ?? "Lam";
+  const chordName = chordNameOf(note, harmonyMap, keyShift);
   if (mode === "accord") {
     const frets = CHORD_FRETS[chordName] ?? CHORD_FRETS["Lam"];
     return [chordName, frets.flatMap((f, s) => (f === null ? [] : [[s, f, OPEN_STRINGS[s] + f + transpose] as const]))];

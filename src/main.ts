@@ -3,6 +3,8 @@
 // ==============================================================================
 
 import "./style.css";
+import exampleMelody from "../examples/au_clair_de_la_lune.mid?url";
+import exampleTracks from "../examples/au_clair_de_la_lune_3_pistes.mid?url";
 import { AudioOutput, Playback, type PlaybackView } from "./audio";
 import {
   DEFAULT_INSTRUMENT,
@@ -25,9 +27,11 @@ import {
   type Notation,
 } from "./guitar";
 import {
+  chordNameOf,
   detectKey,
   generateProcessedMidi,
   guessMelodyPart,
+  harmonize,
   keepHighestNotes,
   listParts,
   readMidiInput,
@@ -38,7 +42,9 @@ import {
 } from "./logic";
 import type { LiveParams } from "./player";
 import { STYLES, type StrumStyle } from "./styles";
+import { refreshColors } from "./ui/canvas";
 import { drawChord } from "./ui/chord";
+import { setButton, setTheme, setupShell, shellBusy } from "./ui/shell";
 import { Timeline } from "./ui/timeline";
 
 function $<T extends HTMLElement>(id: string): T {
@@ -80,7 +86,10 @@ const lblLoop = $("lbl-loop");
 const tlScroll = $("tl-scroll");
 const lblPosition = $("lbl-position");
 const lblStatus = $("lbl-status");
+const welcome = $("welcome");
+const player = $("player");
 const dialog = $<HTMLDialogElement>("dlg");
+const dlgCancel = $("dlg-cancel");
 
 let playback: Playback | null = null;
 let audio: AudioOutput | null = null; // sortie sonore ouverte au premier usage, puis réutilisée
@@ -110,6 +119,10 @@ let shownPosition = -1; // dernière position donnée à la frise
 
 const STORAGE_KEY = "midiweb.settings.v2";
 const MIN_LOOP = 0.1; // durée (s) en dessous de laquelle une boucle n'est pas jouée
+const EXAMPLES = [
+  { name: "au_clair_de_la_lune.mid", url: exampleMelody },
+  { name: "au_clair_de_la_lune_3_pistes.mid", url: exampleTracks },
+];
 
 const timeline = new Timeline(tlScroll, $("tl-spacer"), $<HTMLCanvasElement>("cv-timeline"), (seconds) =>
   seekTo(seconds, false),
@@ -127,11 +140,21 @@ function formatTime(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, "0")}`;
 }
 
-function showMessage(title: string, message: string): void {
+function showMessage(title: string, message: string, cancellable = false): void {
   $("dlg-title").textContent = title;
   $("dlg-text").textContent = message;
+  dlgCancel.hidden = !cancellable;
   if (dialog.open) dialog.close();
+  dialog.returnValue = "";
   dialog.showModal();
+}
+
+/** Message avec « Annuler » : vrai si OK est choisi, faux si le message est fermé autrement. */
+function confirmMessage(title: string, message: string): Promise<boolean> {
+  showMessage(title, message, true);
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "ok"), { once: true });
+  });
 }
 
 function errorText(e: unknown): string {
@@ -313,11 +336,10 @@ function drawTimeline(): void {
   const shift = keyShift();
   const labels = used.map((n) => {
     const pitch = n.pitch + shift;
-    const chord: string | undefined = harmony[mod(pitch, 12)];
-    const name =
-      chord || chords
-        ? transposedChordName(chord ?? "Lam", transpose, notation())
-        : noteName(pitch + transpose, notation());
+    const chord: string | undefined = chords ? chordNameOf(n, harmony, shift) : harmony[mod(pitch, 12)];
+    const name = chord
+      ? transposedChordName(chord, transpose, notation())
+      : noteName(pitch + transpose, notation());
     return { start: n.start, name };
   });
   // Les notes des pistes décochées restent dessinées, grisées
@@ -400,8 +422,8 @@ function updateTransport(): void {
 }
 
 function resetDisplay(): void {
-  btnPlay.textContent = "▶ Écouter";
-  btnPause.textContent = "⏸ Pause";
+  setButton(btnPlay, "play", "Écouter");
+  setButton(btnPause, "pause", "Pause");
   shownPosition = -1;
   updateTransport();
   showCursor();
@@ -440,6 +462,26 @@ function clearLoop(): void {
 
 // --- Fichier, lecture, export ------------------------------------------------
 
+/** Tant qu'aucun fichier n'est ouvert, l'accueil tient la place du lecteur. */
+function showPlayer(loaded: boolean): void {
+  welcome.hidden = loaded;
+  player.hidden = !loaded;
+}
+
+async function loadExample(index: number): Promise<void> {
+  const { name, url } = EXAMPLES[index];
+  let bytes: ArrayBuffer;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    bytes = await response.arrayBuffer();
+  } catch (e) {
+    showMessage("Erreur", `Impossible de charger l'exemple : ${errorText(e)}`);
+    return;
+  }
+  await loadFile(new File([bytes], name));
+}
+
 async function loadFile(file: File): Promise<void> {
   const request = ++fileRequest;
   stopAudio(true);
@@ -463,7 +505,8 @@ async function loadFile(file: File): Promise<void> {
     return;
   }
   inputFileName = file.name;
-  fileNotes = input.notes;
+  // Les accords sont lus dans toutes les pistes, cochées ou non
+  fileNotes = harmonize(input.notes);
   parts = listParts(input);
   // Plusieurs pistes jouées ensemble se superposent : seule la mélodie probable est cochée d'office
   melodyPart = guessMelodyPart(input);
@@ -476,6 +519,7 @@ async function loadFile(file: File): Promise<void> {
   beatsPerBar = input.beatsPerBar;
   lblFile.textContent = file.name;
   lblFile.classList.remove("muted");
+  showPlayer(true); // avant de dessiner : la frise prend la largeur disponible
   openFile();
 }
 
@@ -512,6 +556,7 @@ function closeFile(): void {
   lblFile.classList.add("muted");
   openFile();
   inputNotes = null;
+  showPlayer(false);
   lblStatus.textContent = "En attente d'un fichier...";
   drawTimeline();
   updateTransport();
@@ -559,7 +604,8 @@ function togglePause(): void {
   if (!playback) return;
   if (playback.paused) playback.resume();
   else playback.pause();
-  btnPause.textContent = playback.paused ? "▶ Reprendre" : "⏸ Pause";
+  if (playback.paused) setButton(btnPause, "play", "Reprendre");
+  else setButton(btnPause, "pause", "Pause");
 }
 
 async function playAudio(): Promise<void> {
@@ -576,7 +622,7 @@ async function playAudio(): Promise<void> {
   const request = ++playRequest;
   const status = lblStatus.textContent;
   starting = true;
-  btnPlay.textContent = "⏹ Arrêter";
+  setButton(btnPlay, "stop", "Arrêter");
   lblStatus.textContent = "Chargement du son...";
   try {
     audio ??= new AudioOutput(volume());
@@ -672,9 +718,11 @@ function exportMidi(): void {
 // --- Réglages retenus d'une visite à l'autre ---------------------------------
 
 const volume = () => Number(scaleVolume.value) / 100;
+const browse = () => fileInput.click();
 
-function saveSettings(): void {
-  const settings = {
+/** Les réglages affichés, sous la forme retenue d'une visite à l'autre. */
+function readSettings(): Record<string, unknown> {
+  return {
     scale: scaleKey(),
     transpose,
     mode: mode(),
@@ -689,8 +737,11 @@ function saveSettings(): void {
     delayMs: Number(scaleStrumSpeed.value),
     volume: Number(scaleVolume.value),
   };
+}
+
+function saveSettings(): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(readSettings()));
   } catch {
     // stockage refusé (navigation privée, réglage du navigateur) : les réglages ne sont pas retenus
   }
@@ -702,15 +753,10 @@ function pickRadio(name: string, value: unknown): void {
   }
 }
 
-/** Remplit la liste des tonalités et reprend les réglages de la dernière visite, s'ils sont lisibles. */
-function restoreSettings(): void {
-  let saved: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
-    if (typeof parsed === "object" && parsed !== null) saved = parsed as Record<string, unknown>;
-  } catch {
-    // stockage refusé ou contenu illisible : réglages par défaut
-  }
+let defaultSettings: Record<string, unknown> = {}; // réglages d'origine, relevés dans la page au démarrage
+
+/** Remplit la liste des tonalités et applique les réglages donnés, pour ceux qui sont lisibles. */
+function applySettings(saved: Record<string, unknown>): void {
   const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
   const check = (box: HTMLInputElement, value: unknown) => {
     if (typeof value === "boolean") box.checked = value;
@@ -730,7 +776,8 @@ function restoreSettings(): void {
   check(chkMono, saved.mono);
   check(chkChromatic, saved.chromatic);
   if (typeof saved.instrument === "string" && saved.instrument in INSTRUMENTS) cbInstrument.value = saved.instrument;
-  if (typeof saved.style === "string" && saved.style in STYLES) cbStyle.value = saved.style;
+  // "" : le style « Classique », qui n'est pas dans STYLES
+  if (typeof saved.style === "string" && (saved.style === "" || saved.style in STYLES)) cbStyle.value = saved.style;
   const strums = number(saved.strums);
   if (strums !== null) spinStrums.value = String(Math.max(1, Math.min(MAX_STRUMS, Math.trunc(strums))));
   slide(scaleSpeed, saved.speed);
@@ -738,15 +785,58 @@ function restoreSettings(): void {
   slide(scaleVolume, saved.volume);
 }
 
+/** Reprend les réglages de la dernière visite, s'ils sont lisibles. */
+function restoreSettings(): void {
+  let saved: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+    if (typeof parsed === "object" && parsed !== null) saved = parsed as Record<string, unknown>;
+  } catch {
+    // stockage refusé ou contenu illisible : réglages par défaut
+  }
+  applySettings(saved);
+}
+
+/** Valeur des curseurs, écrite à côté. */
+function showSliders(): void {
+  $("out-speed").textContent = `x${Number(scaleSpeed.value).toFixed(2)}`;
+  $("out-strum-speed").textContent = scaleStrumSpeed.value;
+  $("out-volume").textContent = `${scaleVolume.value} %`;
+}
+
+/** Tout revient aux réglages d'origine, thème compris ; le fichier ouvert et la lecture restent. */
+async function resetSettings(): Promise<void> {
+  const confirmed = await confirmMessage(
+    "Réinitialiser les réglages",
+    "Tous les réglages reprennent leur valeur d'origine. Le fichier ouvert est conservé.",
+  );
+  if (!confirmed) return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // stockage refusé : aucun réglage n'était retenu
+  }
+  melodySaved = null;
+  applySettings(defaultSettings);
+  setTheme("system");
+  showSliders();
+  audio?.setVolume(volume());
+  onModeChange();
+  onNotationChange();
+}
+
 // --- Clavier -----------------------------------------------------------------
+
+// Espace garde son rôle sur une case, une liste, le titre d'une rubrique, et sur les boutons de la
+// barre et de l'accueil, qui n'ont rien à voir avec la lecture
+const KEEPS_SPACE = 'input[type="checkbox"], input[type="radio"], select, summary, .bar, .welcome';
 
 /** Espace : écouter, puis pause et reprise. Flèches : reculer et avancer. Début : retour au début. */
 function onKeyDown(event: KeyboardEvent): void {
-  if (event.ctrlKey || event.altKey || event.metaKey || dialog.open) return;
+  if (event.ctrlKey || event.altKey || event.metaKey || shellBusy()) return;
   const target = event.target instanceof HTMLElement ? event.target : null;
   if (event.key === " ") {
-    // Espace garde son rôle sur une case, une liste ou le titre des pistes
-    if (target?.closest('input[type="checkbox"], input[type="radio"], select, summary')) return;
+    if (target?.closest(KEEPS_SPACE)) return;
     event.preventDefault(); // ni défilement de la page, ni clic sur le bouton qui a le focus
     if (event.repeat) return;
     if (playback) togglePause();
@@ -771,8 +861,22 @@ function setupUi(): void {
     new Option("Classique (strums par note)", ""),
     ...Object.entries(STYLES).map(([id, style]) => new Option(style.label, id)),
   );
+  fillScales();
+  defaultSettings = readSettings(); // ceux de index.html, avant de reprendre ceux de la dernière visite
   restoreSettings();
   fillFileKeys();
+  setupShell({
+    open: browse,
+    exportMidi,
+    loadExample: (index) => void loadExample(index),
+    reset: () => void resetSettings(),
+    // Les canevas sont redessinés aux couleurs du thème ; en lecture, `pollPlayer` redessine l'accord
+    onTheme: () => {
+      refreshColors();
+      timeline.redraw();
+      if (!playback) clearNowPlaying();
+    },
+  });
   // Tout réglage modifié est retenu pour la prochaine visite
   document.querySelector(".settings")!.addEventListener("change", saveSettings);
 
@@ -797,13 +901,14 @@ function setupUi(): void {
     radio.addEventListener("change", onNotationChange);
   }
 
-  // Valeur des curseurs, écrite à côté
-  const showSliders = () => {
-    $("out-speed").textContent = `x${Number(scaleSpeed.value).toFixed(2)}`;
-    $("out-strum-speed").textContent = scaleStrumSpeed.value;
-    $("out-volume").textContent = `${scaleVolume.value} %`;
-  };
   scaleSpeed.addEventListener("input", showSliders);
+  // La vitesse est sous la frise, hors du panneau des réglages dont les changements sont retenus
+  scaleSpeed.addEventListener("change", saveSettings);
+  $("btn-speed-reset").addEventListener("click", () => {
+    scaleSpeed.value = "1";
+    showSliders();
+    saveSettings();
+  });
   scaleStrumSpeed.addEventListener("input", showSliders);
   scaleVolume.addEventListener("input", () => {
     showSliders();
@@ -811,7 +916,9 @@ function setupUi(): void {
   });
   showSliders();
 
-  $("btn-browse").addEventListener("click", () => fileInput.click());
+  $("btn-browse").addEventListener("click", browse);
+  $("btn-welcome-open").addEventListener("click", browse);
+  $("btn-welcome-example").addEventListener("click", () => void loadExample(0));
   fileInput.addEventListener("change", () => {
     const file = fileInput.files?.[0];
     fileInput.value = ""; // le même fichier peut être rechoisi
@@ -830,8 +937,8 @@ function setupUi(): void {
     if (file) void loadFile(file);
   });
 
-  btnBack.textContent = `⏪ -${SEEK_STEP} s`;
-  btnForward.textContent = `+${SEEK_STEP} s ⏩`;
+  setButton(btnBack, "back", `-${SEEK_STEP} s`);
+  setButton(btnForward, "forward", `+${SEEK_STEP} s`);
   btnStart.addEventListener("click", () => seekTo(0.0));
   btnBack.addEventListener("click", () => seekBy(-SEEK_STEP));
   btnForward.addEventListener("click", () => seekBy(SEEK_STEP));
@@ -845,7 +952,8 @@ function setupUi(): void {
   window.addEventListener("keydown", onKeyDown);
   // Firefox clique le bouton qui a le focus au relâchement d'Espace
   window.addEventListener("keyup", (event) => {
-    if (event.key === " " && event.target instanceof HTMLButtonElement && !dialog.open) event.preventDefault();
+    if (event.key !== " " || !(event.target instanceof HTMLButtonElement) || shellBusy()) return;
+    if (!event.target.closest(KEEPS_SPACE)) event.preventDefault();
   });
 
   updateTransport();

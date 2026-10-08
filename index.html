@@ -2,174 +2,441 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Guitar MIDI Strummer - Harmoniseur</title>
-    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" />
+    <title>Guitar MIDI Strummer</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1' y='1' width='22' height='22' rx='6' fill='%23e8590c'/%3E%3Cpath d='M8 6.5v11M12 6.5v11M16 6.5v11' stroke='%23fff' stroke-width='1.3'/%3E%3Cpath d='M7.3 6.5h9.4' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='8' cy='11' r='2' fill='%23fff'/%3E%3Ccircle cx='16' cy='14.5' r='2' fill='%23fff'/%3E%3C/svg%3E"
+    />
+    <script>
+      // Thème choisi lors d'une visite précédente, posé avant le premier affichage
+      try {
+        const theme = localStorage.getItem("midiweb.theme");
+        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      } catch {
+        // stockage refusé : thème du système
+      }
+    </script>
   </head>
   <body>
-    <main class="app">
-      <h1>Guitar MIDI Strummer - Harmoniseur</h1>
+    <!-- Icônes, reprises par <use href="#i-..."> -->
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-logo" viewBox="0 0 24 24">
+        <rect class="logo-bg" x="1" y="1" width="22" height="22" rx="6" />
+        <path class="logo-line" d="M8 6.5v11M12 6.5v11M16 6.5v11" stroke-width="1.3" />
+        <path class="logo-line" d="M7.3 6.5h9.4" stroke-width="2" />
+        <circle class="logo-dot" cx="8" cy="11" r="2" />
+        <circle class="logo-dot" cx="16" cy="14.5" r="2" />
+      </symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24">
+        <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+      </symbol>
+      <symbol id="i-open" viewBox="0 0 24 24">
+        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      </symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" /></symbol>
+      <symbol id="i-music" viewBox="0 0 24 24">
+        <path d="M9 18V6l10-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" />
+      </symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24">
+        <rect x="6.5" y="6.5" width="11" height="11" rx="1" fill="currentColor" />
+      </symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12" stroke-width="3" /></symbol>
+      <symbol id="i-start" viewBox="0 0 24 24">
+        <path d="M6 6v12" /><path d="M19 6.5v11l-9-5.5z" fill="currentColor" />
+      </symbol>
+      <symbol id="i-back" viewBox="0 0 24 24">
+        <path d="M11.5 7v10l-7-5zM20 7v10l-7-5z" fill="currentColor" />
+      </symbol>
+      <symbol id="i-forward" viewBox="0 0 24 24">
+        <path d="M12.5 7v10l7-5zM4 7v10l7-5z" fill="currentColor" />
+      </symbol>
+      <symbol id="i-system" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" /></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24">
+        <rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7 14h10" />
+      </symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5h.01" /></symbol>
+      <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9" /><path d="M4 4v5h5" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
+    </svg>
 
-      <div class="top">
-        <div class="settings">
-          <!-- 1. Sélection Fichier -->
-          <fieldset>
-            <legend>1. Fichier MIDI Source</legend>
-            <div class="file-row">
-              <span id="lbl-file" class="file-name muted">Aucun fichier sélectionné</span>
-              <button id="btn-browse" type="button">Parcourir...</button>
-              <input id="file-input" type="file" accept=".mid,.midi,.csv,.txt" hidden />
-            </div>
-            <!-- Pistes du fichier : seules les pistes cochées sont jouées et exportées ; au
-                 chargement, seule la mélodie probable est cochée -->
-            <details id="tracks" class="tracks" hidden>
-              <summary id="lbl-tracks"></summary>
-              <div id="tracks-list" class="tracks-list"></div>
-              <div class="tracks-actions">
-                <button id="btn-tracks-melody" type="button">Mélodie probable</button>
-                <button id="btn-tracks-all" type="button">Toutes</button>
-                <button id="btn-tracks-none" type="button">Aucune</button>
-              </div>
-            </details>
-          </fieldset>
-
-          <!-- 2. Paramètres Musicaux -->
-          <fieldset>
-            <legend>2. Harmonisation &amp; Mode</legend>
-            <div class="grid">
-              <label for="cb-scale">Tonalité globale :</label>
-              <select id="cb-scale"></select>
-
-              <label for="cb-file-key">Tonalité du morceau :</label>
-              <span class="file-key value">
-                <span id="lbl-file-key" class="muted"></span>
-                <select id="cb-file-key"></select>
-              </span>
-
-              <span>Transposition (demi-tons) :</span>
-              <span class="transpose value">
-                <button id="btn-transpose-down" type="button" aria-label="Un demi-ton plus bas">−</button>
-                <span id="lbl-transpose"></span>
-                <button id="btn-transpose-up" type="button" aria-label="Un demi-ton plus haut">+</button>
-              </span>
-
-              <span>Mode d'accompagnement :</span>
-              <span class="radios value">
-                <label><input type="radio" name="mode" value="corde" checked /> Simple Corde</label>
-                <label><input type="radio" name="mode" value="accord" /> Accord 6 Cordes</label>
-              </span>
-
-              <label class="wide">
-                <input id="chk-melody" type="checkbox" checked />
-                Mélodie seule (note la plus aiguë des notes simultanées)
-              </label>
-
-              <label class="wide">
-                <input id="chk-mono" type="checkbox" checked />
-                Une seule note ou un seul accord à la fois (le nouveau coupe le précédent)
-              </label>
-
-              <label class="wide">
-                <input id="chk-chromatic" type="checkbox" />
-                Accord adapté aux notes hors tonalité (sinon l'accord de repli)
-              </label>
-
-              <span>Notation des notes :</span>
-              <span class="radios value">
-                <label><input type="radio" name="notation" value="fr" checked /> Française (Do Ré Mi)</label>
-                <label><input type="radio" name="notation" value="en" /> Anglo-saxonne (C D E)</label>
-              </span>
-
-              <label for="cb-instrument">Instrument :</label>
-              <select id="cb-instrument"></select>
-            </div>
-          </fieldset>
-
-          <!-- 3. Réglages Rythme & Strumming -->
-          <fieldset>
-            <legend>3. Strumming &amp; Vitesse</legend>
-            <div class="grid">
-              <label for="cb-style">Style de strumming (mode Accord) :</label>
-              <select id="cb-style"></select>
-
-              <label for="spin-tempo">Tempo du style (noires par minute) :</label>
-              <input id="spin-tempo" type="number" min="30" max="300" step="1" value="120" />
-
-              <label for="spin-strums">Nombre de strums par note :</label>
-              <input id="spin-strums" type="number" min="1" max="16" step="1" value="2" />
-
-              <label for="scale-speed">Vitesse (multiplicateur) :</label>
-              <span class="slider value">
-                <input id="scale-speed" type="range" min="0.5" max="2" step="0.01" value="1" />
-                <output id="out-speed" for="scale-speed"></output>
-              </span>
-
-              <label for="scale-strum-speed">Balayage cordes (ms) :</label>
-              <span class="slider value">
-                <input id="scale-strum-speed" type="range" min="5" max="40" step="1" value="15" />
-                <output id="out-strum-speed" for="scale-strum-speed"></output>
-              </span>
-
-              <label for="scale-volume">Volume :</label>
-              <span class="slider value">
-                <input id="scale-volume" type="range" min="0" max="100" step="1" value="100" />
-                <output id="out-volume" for="scale-volume"></output>
-              </span>
-            </div>
-          </fieldset>
-        </div>
-
-        <!-- 4. Ce qui est joué : nom de l'accord (ou de la note) et diagramme des cordes -->
-        <fieldset class="now">
-          <legend>Lecture en cours</legend>
-          <div id="lbl-chord" class="chord-name">—</div>
-          <div id="lbl-chord-sub" class="chord-sub muted"></div>
-          <canvas id="cv-chord" role="img" aria-label="Diagramme de l'accord joué"></canvas>
-          <div id="lbl-stroke" class="stroke"></div>
-        </fieldset>
+    <!-- 1. Barre : réglages (tiroir sur petit écran), fichier ouvert, actions, menu -->
+    <header class="bar">
+      <button
+        id="btn-nav"
+        type="button"
+        class="icon-btn nav-toggle"
+        aria-controls="panel"
+        aria-expanded="false"
+        aria-label="Réglages"
+      >
+        <svg class="icon" aria-hidden="true"><use href="#i-menu" /></svg>
+      </button>
+      <div class="brand">
+        <svg class="logo" aria-hidden="true"><use href="#i-logo" /></svg>
+        <h1>Guitar MIDI Strummer</h1>
       </div>
+      <span id="lbl-file" class="file-name muted">Aucun fichier sélectionné</span>
+      <button id="btn-browse" type="button" class="bar-action">
+        <svg class="icon" aria-hidden="true"><use href="#i-open" /></svg>
+        <span class="label">Ouvrir</span>
+      </button>
+      <button id="btn-export" type="button" class="bar-action">
+        <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>
+        <span class="label">Exporter</span>
+      </button>
+      <button
+        id="btn-menu"
+        type="button"
+        class="icon-btn"
+        popovertarget="menu"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label="Menu"
+      >
+        <svg class="icon" aria-hidden="true"><use href="#i-more" /></svg>
+      </button>
+      <input id="file-input" type="file" accept=".mid,.midi,.csv,.txt" hidden />
+    </header>
 
-      <!-- 5. Frise du morceau : notes, accords, position de lecture -->
-      <fieldset class="song">
-        <legend>Morceau (cliquer pour se déplacer)</legend>
-        <div id="tl-scroll" class="tl-scroll">
-          <div id="tl-spacer" class="tl-spacer">
-            <canvas id="cv-timeline" role="img" aria-label="Frise du morceau"></canvas>
+    <div id="menu" class="menu" popover role="menu" aria-label="Menu">
+      <div role="group" aria-label="Fichier">
+        <div class="menu-title" aria-hidden="true">Fichier</div>
+        <button type="button" role="menuitem" data-action="open">
+          <svg class="icon" aria-hidden="true"><use href="#i-open" /></svg>
+          Ouvrir un fichier...
+        </button>
+        <button type="button" role="menuitem" data-action="example" data-index="0">
+          <svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>
+          Exemple : Au clair de la lune
+        </button>
+        <button type="button" role="menuitem" data-action="example" data-index="1">
+          <svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>
+          Exemple : Au clair de la lune, 3 pistes
+        </button>
+        <button type="button" role="menuitem" data-action="export">
+          <svg class="icon" aria-hidden="true"><use href="#i-download" /></svg>
+          Exporter le MIDI...
+        </button>
+      </div>
+      <hr />
+      <div role="group" aria-label="Thème">
+        <div class="menu-title" aria-hidden="true">Thème</div>
+        <button type="button" role="menuitemradio" aria-checked="true" data-action="theme" data-value="system">
+          <svg class="icon" aria-hidden="true"><use href="#i-system" /></svg>
+          Système
+          <svg class="icon check" aria-hidden="true"><use href="#i-check" /></svg>
+        </button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-action="theme" data-value="light">
+          <svg class="icon" aria-hidden="true"><use href="#i-sun" /></svg>
+          Clair
+          <svg class="icon check" aria-hidden="true"><use href="#i-check" /></svg>
+        </button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-action="theme" data-value="dark">
+          <svg class="icon" aria-hidden="true"><use href="#i-moon" /></svg>
+          Sombre
+          <svg class="icon check" aria-hidden="true"><use href="#i-check" /></svg>
+        </button>
+      </div>
+      <hr />
+      <div role="group" aria-label="Aide">
+        <div class="menu-title" aria-hidden="true">Aide</div>
+        <button type="button" role="menuitem" data-action="keys">
+          <svg class="icon" aria-hidden="true"><use href="#i-keyboard" /></svg>
+          Raccourcis clavier
+        </button>
+        <button type="button" role="menuitem" data-action="about">
+          <svg class="icon" aria-hidden="true"><use href="#i-info" /></svg>
+          À propos
+        </button>
+      </div>
+      <hr />
+      <button type="button" role="menuitem" data-action="reset">
+        <svg class="icon" aria-hidden="true"><use href="#i-reset" /></svg>
+        Réinitialiser les réglages
+      </button>
+    </div>
+
+    <!-- 2. Réglages : à côté du lecteur sur grand écran, en tiroir sinon -->
+    <aside id="panel" class="panel settings" aria-label="Réglages" tabindex="-1">
+      <!-- Pistes du fichier : seules les pistes cochées sont jouées et exportées ; au
+           chargement, seule la mélodie probable est cochée -->
+      <details id="tracks" class="section tracks" hidden>
+        <summary id="lbl-tracks"></summary>
+        <div class="section-body">
+          <div id="tracks-list" class="tracks-list"></div>
+          <div class="tracks-actions">
+            <button id="btn-tracks-melody" type="button">Mélodie probable</button>
+            <button id="btn-tracks-all" type="button">Toutes</button>
+            <button id="btn-tracks-none" type="button">Aucune</button>
           </div>
         </div>
+      </details>
 
-        <!-- 6. Transport, sous la frise : début, recul, lecture, pause, avance, puis la position à droite -->
+      <details class="section" open>
+        <summary>Harmonie</summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="cb-scale">Tonalité globale</label>
+            <select id="cb-scale"></select>
+          </div>
+
+          <div class="field">
+            <label for="cb-file-key">Tonalité du morceau</label>
+            <select id="cb-file-key"></select>
+            <span id="lbl-file-key" class="hint"></span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Transposition (demi-tons)</span>
+            <span class="transpose">
+              <button id="btn-transpose-down" type="button" aria-label="Un demi-ton plus bas">−</button>
+              <span id="lbl-transpose"></span>
+              <button id="btn-transpose-up" type="button" aria-label="Un demi-ton plus haut">+</button>
+            </span>
+          </div>
+
+          <div class="field">
+            <span id="lbl-mode" class="field-label">Mode d'accompagnement</span>
+            <span class="segmented" role="radiogroup" aria-labelledby="lbl-mode">
+              <label><input type="radio" name="mode" value="corde" checked /><span>Simple Corde</span></label>
+              <label><input type="radio" name="mode" value="accord" /><span>Accord 6 Cordes</span></label>
+            </span>
+          </div>
+
+          <label class="check">
+            <input id="chk-melody" type="checkbox" checked />
+            <span>Mélodie seule <small>La note la plus aiguë des notes simultanées</small></span>
+          </label>
+
+          <label class="check">
+            <input id="chk-mono" type="checkbox" checked />
+            <span>
+              Une seule note ou un seul accord à la fois <small>Le nouveau coupe le précédent</small>
+            </span>
+          </label>
+
+          <label class="check">
+            <input id="chk-chromatic" type="checkbox" />
+            <span>Accord adapté aux notes hors tonalité <small>Sinon, l'accord de repli</small></span>
+          </label>
+
+          <div class="field">
+            <span id="lbl-notation" class="field-label">Notation des notes</span>
+            <span class="segmented" role="radiogroup" aria-labelledby="lbl-notation">
+              <label><input type="radio" name="notation" value="fr" checked /><span>Do Ré Mi</span></label>
+              <label><input type="radio" name="notation" value="en" /><span>C D E</span></label>
+            </span>
+          </div>
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>Strumming</summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="cb-style">Style de strumming (mode Accord)</label>
+            <select id="cb-style"></select>
+          </div>
+
+          <div class="field inline">
+            <label for="spin-tempo">Tempo du style (noires par minute)</label>
+            <input id="spin-tempo" type="number" min="30" max="300" step="1" value="120" />
+          </div>
+
+          <div class="field inline">
+            <label for="spin-strums">Nombre de strums par note</label>
+            <input id="spin-strums" type="number" min="1" max="16" step="1" value="2" />
+          </div>
+
+          <div class="field">
+            <span class="field-head">
+              <label for="scale-strum-speed">Balayage des cordes (ms)</label>
+              <output id="out-strum-speed" for="scale-strum-speed"></output>
+            </span>
+            <input id="scale-strum-speed" type="range" min="5" max="40" step="1" value="15" />
+          </div>
+        </div>
+      </details>
+
+      <details class="section" open>
+        <summary>Son</summary>
+        <div class="section-body">
+          <div class="field">
+            <label for="cb-instrument">Instrument</label>
+            <select id="cb-instrument"></select>
+          </div>
+
+          <div class="field">
+            <span class="field-head">
+              <label for="scale-volume">Volume</label>
+              <output id="out-volume" for="scale-volume"></output>
+            </span>
+            <input id="scale-volume" type="range" min="0" max="100" step="1" value="100" />
+          </div>
+        </div>
+      </details>
+    </aside>
+    <div id="backdrop" class="backdrop"></div>
+
+    <main id="stage" class="stage">
+      <!-- 3. Accueil, tant qu'aucun fichier n'est ouvert -->
+      <section id="welcome" class="welcome">
+        <svg class="logo" aria-hidden="true"><use href="#i-logo" /></svg>
+        <h2>Ouvrez un fichier MIDI</h2>
+        <p class="muted">
+          Déposez un fichier MIDI (.mid) ou midicsv (.csv, .txt) sur la page, ou choisissez-en un. Il est rejoué à
+          la guitare, note par note ou en accords, dans la tonalité de votre choix.
+        </p>
+        <div class="welcome-actions">
+          <button id="btn-welcome-open" type="button" class="primary">
+            <svg class="icon" aria-hidden="true"><use href="#i-open" /></svg>
+            Ouvrir un fichier
+          </button>
+          <button id="btn-welcome-example" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-music" /></svg>
+            Essayer un exemple
+          </button>
+        </div>
+      </section>
+
+      <div id="player" class="player" hidden>
+        <!-- 4. Ce qui est joué : nom de l'accord (ou de la note) et diagramme des cordes -->
+        <section class="now" aria-label="Lecture en cours">
+          <div class="now-text">
+            <div class="eyebrow">Lecture en cours</div>
+            <div id="lbl-chord" class="chord-name">—</div>
+            <div id="lbl-chord-sub" class="chord-sub muted"></div>
+            <div id="lbl-stroke" class="stroke"></div>
+          </div>
+          <canvas id="cv-chord" role="img" aria-label="Diagramme de l'accord joué"></canvas>
+        </section>
+
+        <!-- 5. Frise du morceau : notes, accords, position de lecture -->
+        <section class="song" aria-label="Morceau">
+          <div class="song-head">
+            <span class="eyebrow">Morceau</span>
+            <span class="hint">Cliquer sur la frise pour se déplacer</span>
+          </div>
+          <div id="tl-scroll" class="tl-scroll">
+            <div id="tl-spacer" class="tl-spacer">
+              <canvas id="cv-timeline" role="img" aria-label="Frise du morceau"></canvas>
+            </div>
+          </div>
+
+          <div class="song-controls">
+            <!-- Boucle : ses bornes sont posées à la position courante -->
+            <div class="loop">
+              <span class="field-label">Boucle</span>
+              <button id="btn-loop-start" type="button" title="Début de la boucle à la position courante">A</button>
+              <button id="btn-loop-end" type="button" title="Fin de la boucle à la position courante">B</button>
+              <span id="lbl-loop" class="muted"></span>
+              <button id="btn-loop-clear" type="button">Effacer</button>
+            </div>
+
+            <!-- Vitesse : sous la main pour ralentir le morceau, sans ouvrir les réglages -->
+            <div class="speed">
+              <label for="scale-speed" class="field-label">Vitesse</label>
+              <input id="scale-speed" type="range" min="0.5" max="2" step="0.01" value="1" />
+              <output id="out-speed" for="scale-speed"></output>
+              <button id="btn-speed-reset" type="button" title="Revenir à la vitesse du fichier">x1</button>
+            </div>
+          </div>
+
+          <div id="lbl-status" class="status">En attente d'un fichier...</div>
+        </section>
+
+        <!-- 6. Transport, toujours en bas de l'écran : début, recul, lecture, pause, avance, position -->
         <div class="transport">
-          <button id="btn-start" type="button">⏮ Début</button>
-          <button id="btn-back" type="button"></button>
-          <button id="btn-play" type="button" class="play">▶ Écouter</button>
-          <button id="btn-pause" type="button" class="pause">⏸ Pause</button>
-          <button id="btn-forward" type="button"></button>
+          <button id="btn-start" type="button" class="seek">
+            <svg class="icon" aria-hidden="true"><use href="#i-start" /></svg>
+            <span class="label">Début</span>
+          </button>
+          <button id="btn-back" type="button" class="seek">
+            <svg class="icon" aria-hidden="true"><use href="#i-back" /></svg>
+            <span class="label"></span>
+          </button>
+          <button id="btn-play" type="button" class="play primary">
+            <svg class="icon" aria-hidden="true"><use href="#i-play" /></svg>
+            <span class="label">Écouter</span>
+          </button>
+          <button id="btn-pause" type="button" class="pause">
+            <svg class="icon" aria-hidden="true"><use href="#i-pause" /></svg>
+            <span class="label">Pause</span>
+          </button>
+          <button id="btn-forward" type="button" class="seek">
+            <span class="label"></span>
+            <svg class="icon" aria-hidden="true"><use href="#i-forward" /></svg>
+          </button>
           <span id="lbl-position" class="position"></span>
         </div>
-
-        <!-- Boucle : ses bornes sont posées à la position courante -->
-        <div class="loop">
-          <span>Boucle :</span>
-          <button id="btn-loop-start" type="button" title="Début de la boucle à la position courante">A</button>
-          <button id="btn-loop-end" type="button" title="Fin de la boucle à la position courante">B</button>
-          <span id="lbl-loop" class="muted"></span>
-          <button id="btn-loop-clear" type="button">Effacer</button>
-        </div>
-        <div class="muted hint">Clavier : Espace = écouter / pause, ← → = reculer / avancer, Début = retour au début.</div>
-      </fieldset>
-
-      <!-- 7. Statut à gauche, export à droite -->
-      <div class="bottom">
-        <span id="lbl-status" class="status">En attente d'un fichier...</span>
-        <button id="btn-export" type="button">💾 Exporter le MIDI...</button>
       </div>
     </main>
 
-    <dialog id="dlg">
+    <dialog id="dlg" aria-labelledby="dlg-title">
       <h2 id="dlg-title"></h2>
       <p id="dlg-text"></p>
-      <form method="dialog"><button autofocus>OK</button></form>
+      <form method="dialog">
+        <button id="dlg-cancel" value="cancel" hidden>Annuler</button>
+        <button value="ok" class="primary" autofocus>OK</button>
+      </form>
+    </dialog>
+
+    <dialog id="dlg-keys" aria-labelledby="dlg-keys-title">
+      <h2 id="dlg-keys-title">Raccourcis clavier</h2>
+      <table class="keys">
+        <tbody>
+          <tr>
+            <th scope="row"><kbd>Espace</kbd></th>
+            <td>Écouter, puis pause et reprise</td>
+          </tr>
+          <tr>
+            <th scope="row"><kbd>←</kbd> <kbd>→</kbd></th>
+            <td>Reculer, avancer</td>
+          </tr>
+          <tr>
+            <th scope="row"><kbd>Début</kbd></th>
+            <td>Retour au début</td>
+          </tr>
+          <tr>
+            <th scope="row"><kbd>Échap</kbd></th>
+            <td>Fermer le menu, les réglages ou un message</td>
+          </tr>
+        </tbody>
+      </table>
+      <form method="dialog"><button autofocus>Fermer</button></form>
+    </dialog>
+
+    <dialog id="dlg-about" aria-labelledby="dlg-about-title">
+      <h2 id="dlg-about-title">Guitar MIDI Strummer - Harmoniseur</h2>
+      <p>
+        Rejoue un fichier MIDI à la guitare, note par note ou en accords, et l'exporte en MIDI. Version
+        <span id="about-version"></span>.
+      </p>
+      <p>
+        Code source :
+        <a href="https://github.com/gorkamorka13/midiweb" target="_blank" rel="noopener">github.com/gorkamorka13/midiweb</a>
+      </p>
+      <p class="muted">
+        Sons : échantillons Musyng Kite de
+        <a href="https://github.com/gleitz/midi-js-soundfonts" target="_blank" rel="noopener">midi-js-soundfonts</a>,
+        distribués sans modification sous licence
+        <a href="https://creativecommons.org/licenses/by-sa/3.0/deed.fr" target="_blank" rel="noopener">CC BY-SA 3.0</a>.
+        Cette licence ne couvre que ces fichiers, pas le code de l'application.
+      </p>
+      <form method="dialog"><button autofocus>Fermer</button></form>
     </dialog>
 
     <script type="module" src="/src/main.ts"></script>

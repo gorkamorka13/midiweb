@@ -15,10 +15,12 @@ import {
   analyzeInputMidi,
   detectKey,
   generateProcessedMidi,
+  harmonize,
   keepHighestNotes,
   strumLayout,
   sweepDelay,
   toGuitarRange,
+  type Note,
 } from "../src/logic";
 import { parseMidi, playbackMessages } from "../src/midifile";
 import { allFixtures, fileBytes, synthetic } from "./fixtures";
@@ -105,6 +107,43 @@ for (const fixtures of allFixtures) {
     }
   });
 }
+
+describe("accords lus dans toutes les voix", () => {
+  const note = (pitch: number, start = 0, duration = 1, track = 0): Note => ({
+    pitch, start, duration, velocity: 90, track, channel: track,
+  });
+  const scale = "La mineur (Lam)";
+
+  it("l'accord est celui des notes qui sonnent ensemble, amené dans la tonalité choisie", () => {
+    // Sol, Mib, Do, Do : Do mineur, alors que la note aiguë seule (Sol) donnerait Sol mineur
+    const notes = harmonize([note(67, 0, 1, 0), note(63, 0, 1, 1), note(60, 0, 1, 2), note(48, 0, 1, 3)]);
+    expect(notes.map((n) => n.chord)).toEqual([[0, "m"], [0, "m"], [0, "m"], [0, "m"]]);
+    const [soprano] = keepHighestNotes(notes);
+    expect(strumLayout(soprano, "accord", SCALE_HARMONY["Do mineur (Dom)"])[0]).toBe("Dom");
+    const shift = shiftToKey([0, "mineur"], scale);
+    expect(strumLayout(soprano, "accord", SCALE_HARMONY[scale], 0, shift)[0]).toBe("Lam");
+  });
+
+  it("à égalité, la fondamentale est la note la plus grave", () => {
+    // Fa, Lab, Do, Mib : Fa mineur ou Lab Majeur
+    expect(harmonize([note(41), note(56), note(60), note(63)])[0].chord).toEqual([5, "m"]);
+    expect(harmonize([note(44), note(53), note(60), note(63)])[0].chord).toEqual([8, ""]);
+  });
+
+  it("une note tenue compte dans l'accord des notes qui commencent pendant qu'elle sonne", () => {
+    const notes = harmonize([note(48, 0, 4), note(64, 0, 1), note(67, 1, 1), note(69, 2, 1)]);
+    expect(notes.map((n) => n.chord)).toEqual([[0, ""], [0, ""], [0, ""], [9, "m"]]);
+  });
+
+  it("une note seule, ou hors de tout accord, garde l'accord de la grille", () => {
+    // la deuxième note commence quand la première est finie ; Do et Ré ne forment pas d'accord
+    const notes = harmonize([note(64, 0, 1), note(67, 1, 1), note(60, 3, 1), note(62, 3, 1)]);
+    expect(notes.map((n) => n.chord)).toEqual([undefined, undefined, undefined, undefined]);
+    expect(strumLayout(notes[0], "accord", SCALE_HARMONY[scale])).toEqual(
+      strumLayout({ pitch: 64 }, "accord", SCALE_HARMONY[scale]),
+    );
+  });
+});
 
 describe("fichiers non pris en charge", () => {
   it("division SMPTE", () => {

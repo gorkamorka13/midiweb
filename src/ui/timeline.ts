@@ -1,10 +1,9 @@
 import type { Note } from "../logic";
-import {
-  COL_ACCENT, COL_BORDER, COL_GRID, COL_LOOP, COL_MUTED, COL_NOTE, COL_NOTE_OFF, COL_TEXT, FONT_SMALL, line, prepare,
-  text,
-} from "./canvas";
+import { FONT_NAME, FONT_SMALL, colors, line, prepare, text } from "./canvas";
 
-const TL_H = 104;
+const TL_H = 190;
+const TL_TOP = 42; // sous les noms
+const TL_BOTTOM = TL_H - 22; // au-dessus de l'axe du temps
 const TL_PAD = 10;
 const TL_MAX_SCALE = 400; // pixels par seconde au plus : au-delà, les noms trop serrés sont omis
 const TL_FOLLOW = 0.3; // en lecture, la tête de lecture reste à cette fraction de la largeur visible
@@ -51,7 +50,7 @@ export class Timeline {
     private readonly canvas: HTMLCanvasElement,
     onSeek: (seconds: number) => void,
   ) {
-    this.measure.font = FONT_SMALL;
+    this.measure.font = FONT_NAME; // largeur des noms ; celle des repères de l'axe est surestimée, sans gêne
     this.spacer.style.height = `${TL_H}px`;
 
     const seek = (event: PointerEvent) => onSeek((scroller.scrollLeft + event.offsetX - TL_PAD) / this.scale);
@@ -124,6 +123,11 @@ export class Timeline {
     this.scroller.scrollLeft = 0;
   }
 
+  /** Redessine la frise telle quelle : les couleurs du thème ont changé. */
+  redraw(): void {
+    this.render();
+  }
+
   /**
    * Pixels par seconde : le morceau entier dans la largeur si tous les noms y tiennent, sinon
    * juste assez pour les écrire tous, dans la limite de TL_MAX_SCALE.
@@ -161,7 +165,7 @@ export class Timeline {
 
     this.scale = this.fitScale(model);
     this.width = Math.max(this.viewWidth, 2 * TL_PAD + this.scale * model.duration);
-    const [top, bottom] = [26, TL_H - 22];
+    const [top, bottom] = [TL_TOP, TL_BOTTOM];
     let low = Infinity;
     let high = -Infinity;
     for (const n of model.notes) {
@@ -169,7 +173,7 @@ export class Timeline {
       high = Math.max(high, n.pitch);
     }
     const span = Math.max(1, high - low);
-    const bar = Math.max(2.0, Math.min(6.0, (bottom - top) / (span + 1)));
+    const bar = Math.max(3.0, Math.min(10.0, (bottom - top) / (span + 1)));
     this.barHeight = bar;
 
     // Notes : position horizontale = temps, verticale = hauteur (grisées si écartées par « Mélodie seule »)
@@ -219,26 +223,26 @@ export class Timeline {
   private render(): void {
     const ctx = prepare(this.canvas, this.viewWidth, TL_H);
     if (!this.model) {
-      text(ctx, this.viewWidth / 2, TL_H / 2, "Aucun fichier chargé", COL_MUTED, FONT_SMALL);
+      text(ctx, this.viewWidth / 2, TL_H / 2, "Aucun fichier chargé", colors.muted, FONT_SMALL);
       return;
     }
     const left = this.scroller.scrollLeft;
     const right = left + this.viewWidth;
-    const bottom = TL_H - 22;
+    const bottom = TL_BOTTOM;
     ctx.save();
     ctx.translate(-left, 0);
 
     if (this.loopStart !== null && this.loopEnd !== null) {
-      ctx.fillStyle = COL_LOOP;
+      ctx.fillStyle = colors.loop;
       ctx.fillRect(this.x(this.loopStart), 0, this.x(this.loopEnd) - this.x(this.loopStart), TL_H);
     }
     for (const bound of [this.loopStart, this.loopEnd]) {
-      if (bound !== null) line(ctx, this.x(bound), 0, this.x(bound), TL_H, COL_NOTE);
+      if (bound !== null) line(ctx, this.x(bound), 0, this.x(bound), TL_H, colors.note);
     }
 
     for (const used of [false, true]) {
       // les notes jouées sont dessinées par-dessus les notes écartées
-      ctx.fillStyle = used ? COL_NOTE : COL_NOTE_OFF;
+      ctx.fillStyle = used ? colors.note : colors.noteOff;
       for (const b of this.bars) {
         if (b.x1 > right) break;
         if (b.used === used && b.x2 >= left) ctx.fillRect(b.x1, b.y, b.x2 - b.x1, this.barHeight);
@@ -247,19 +251,19 @@ export class Timeline {
 
     for (const { x, name } of this.names) {
       if (x > right) break;
-      if (x + this.textWidth(name) >= left) text(ctx, x, 13, name, COL_TEXT, FONT_SMALL, "left");
+      if (x + this.textWidth(name) >= left) text(ctx, x, 20, name, colors.text, FONT_NAME, "left");
     }
 
-    line(ctx, TL_PAD, bottom + 3, this.axisEnd, bottom + 3, COL_BORDER);
+    line(ctx, TL_PAD, bottom + 3, this.axisEnd, bottom + 3, colors.border);
     for (const { x, label } of this.marks) {
       if (x > right) break;
-      line(ctx, x, bottom + 3, x, bottom + 7, COL_GRID);
-      text(ctx, x + 2, TL_H - 7, label, COL_MUTED, FONT_SMALL, "left");
+      line(ctx, x, bottom + 3, x, bottom + 7, colors.grid);
+      text(ctx, x + 2, TL_H - 7, label, colors.muted, FONT_SMALL, "left");
     }
 
     if (this.playhead !== null) {
       const x = this.x(this.playhead);
-      line(ctx, x, 2, x, TL_H - 2, COL_ACCENT, 2);
+      line(ctx, x, 2, x, TL_H - 2, colors.accent, 2);
     }
     ctx.restore();
   }
