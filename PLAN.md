@@ -45,6 +45,7 @@ src/midifile.ts       Standard MIDI File reader and writer (mido-compatible)
 src/midicsv.ts        read_midicsv
 src/logic.ts          analyze_input_midi, detect_key, keep_highest_notes, strum_layout,
                       sweep_delay, note_events, generate_processed_midi
+src/styles.ts         strumming styles: patterns, step times on the beat grid, strings per stroke
 src/player.ts         LivePlayer, driven by an injected clock (testable without audio)
 src/audio.ts          AudioContext, smplr instruments, worker tick
 src/ui/timeline.ts    timeline drawing, playhead, scrolling, seek
@@ -110,9 +111,26 @@ All wired in `src/main.ts` and `index.html`; the engine parts already existed.
       `gleitz/midi-js-soundfonts`); recorded in the README, section "Sons : origine et licence".
 - [x] **Docs in step.** README updated for the samples' origin, the 24 keys and the new controls.
 
-### Status on 2026-10-08
-- `npm test`: 134 tests pass (12 new ones in `tests/options.test.ts`: loop, one note at a time,
-  out-of-key chords, track change, melody track guess). `npm run build`: passes.
+### Strumming styles (2026-10-08): done
+
+Decisions taken with the owner: patterns run on a beat grid from the file tempo (not stretched
+over each note), the chord changes on every stroke, and the four requested styles come first.
+
+- [x] **Beat grid.** `readMidiInput` returns `beats` (time of every quarter note, tempo changes
+      included), `beatsPerBar` (first time signature, 4 by default) and `bpm`. MIDICSV
+      `Time_signature` rows are read. `uniformBeats` builds a regular grid for a tempo typed by hand.
+- [x] **Styles as data** in `src/styles.ts`: one step per eighth note over a 4-beat bar, each with
+      direction, strings, velocity and hold; optional swing. Feu de camp, Rock, Jazz, Reggae.
+- [x] **Engine.** `LiveParams.style`, `beats`, `beatsPerBar` (all optional: absent means the
+      desktop behaviour, so the reference tests are untouched). Each stroke plays the chord of the
+      last melody note started and cuts the previous stroke. Seek, pause, loop and speed work.
+- [x] **Export.** `styleEvents` gives the strokes; a test checks that playback sends the same ones.
+- [x] **Page.** "Style de strumming" list and "Tempo du style" field; the strum count is greyed
+      with a style, the style list is greyed in Simple Corde; the style is remembered.
+- [ ] **Tuning by ear** of velocities, holds and string sets: needs the owner.
+
+- `npm test`: 154 tests pass (12 in `tests/options.test.ts`: loop, one note at a time, out-of-key
+  chords, track change, melody track guess; 20 in `tests/styles.test.ts`). `npm run build`: passes.
 - Headless Chrome run against the dev server: every item above exercised, no console error.
 - Not covered by a unit test: the wiring in `src/main.ts` (it is only checked in the browser).
 
@@ -124,6 +142,13 @@ All wired in `src/main.ts` and `index.html`; the engine parts already existed.
       options (one chord at a time, out-of-key chords, loop) were checked for behaviour, not by ear.
 
 ## Next: ideas
+
+- [ ] **Play the melody over a style** (checkbox): with a style the chords no longer follow the
+      rhythm of the tune, so the tune itself is not heard.
+- [ ] **More styles**: Ballade (arpeggio, string by string) and Valse (bass, chord, chord in 3/4).
+- [ ] **Chord change once per beat or per bar** instead of on every stroke, for a calmer harmony.
+- [ ] **Muted strokes**: no sample exists for damped strings; they are imitated by very short notes.
+- [ ] **Time signature changes** inside a file (only the first one is used).
 
 - [ ] **Set the loop by dragging on the timeline**, instead of A / B at the current position.
 - [ ] **Fewer strums on short notes.** Every note gets the chosen number of strums, so a 0.2 s

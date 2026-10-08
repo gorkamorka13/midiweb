@@ -20,7 +20,8 @@ import {
   type Quality,
 } from "./guitar";
 import { MIDICSV_EXTENSIONS, readMidicsv } from "./midicsv";
-import { parseMidi, playbackMessages, writeMidi, type RawMessage } from "./midifile";
+import { DEFAULT_TEMPO, parseMidi, playbackMessages, writeMidi, type RawMessage } from "./midifile";
+import { chordNoteAt, stepAt, strokeStrings, styleStep, type StrumStyle } from "./styles";
 
 /** Note du fichier d'entrée : hauteur MIDI, début et durée en secondes, vélocité. */
 export interface Note {
@@ -37,6 +38,23 @@ export interface Note {
 export interface MidiInput {
   notes: Note[];
   trackNames: Map<number, string>;
+  /** Instant (s) de chaque temps (noire) du morceau, changements de tempo compris. */
+  beats: number[];
+  /** Noires par mesure, d'après le premier chiffrage de mesure (4 s'il n'y en a pas). */
+  beatsPerBar: number;
+  /** Tempo au début de la première note, en noires par minute. */
+  bpm: number;
+}
+
+/** Les notes et les noms de piste suffisent à décrire les parties d'un morceau. */
+type Tracks = Pick<MidiInput, "notes" | "trackNames">;
+
+/** Grille régulière : un temps toutes les 60 / `bpm` secondes, jusqu'à la fin du morceau. */
+export function uniformBeats(bpm: number, end: number): number[] {
+  const interval = 60 / bpm;
+  const beats: number[] = [];
+  for (let i = 0; i * interval <= end + interval; i++) beats.push(i * interval);
+  return beats;
 }
 
 /** Partie d'un morceau : les notes d'un canal d'une piste. */
@@ -61,10 +79,17 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
   type Begun = { pitch: number; start: number; velocity: number; track: number; channel: number };
   const active = new Map<string, Begun>(); // canal:note -> début
   let now = 0.0;
+  // Tempos successifs (microsecondes par noire), chacun avec sa position en ticks et en secondes
+  const tempos = [{ tick: 0, seconds: 0.0, tempo: DEFAULT_TEMPO }];
+  let beatsPerBar: number | null = null;
 
   // La lecture fusionne les pistes et gère les changements de tempo
-  for (const { seconds, event, track } of playbackMessages(mid)) {
+  for (const { seconds, event, track, tick } of playbackMessages(mid)) {
     now += seconds;
+    if (event.kind === "tempo" && event.tempo > 0) tempos.push({ tick, seconds: now, tempo: event.tempo });
+    if (event.kind === "timeSignature" && event.numerator > 0) {
+      beatsPerBar ??= (event.numerator * 4) / event.denominator;
+    }
     if (event.kind !== "noteOn" && event.kind !== "noteOff") continue;
     if (event.channel === 9) continue; // canal 10 = percussions : pas des hauteurs de note
     const key = `${event.channel}:${event.note}`;
@@ -91,7 +116,24 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
     const named = events.find((event) => event.kind === "trackName");
     if (named?.kind === "trackName" && named.name.trim()) trackNames.set(track, named.name.trim());
   });
-  return { notes, trackNames };
+
+  // Un temps tous les `ticksPerBeat` ticks, daté avec le tempo en vigueur à cet endroit
+  const end = notes.reduce((latest, n) => Math.max(latest, n.start + n.duration), 0);
+  const secondsAt = (tick: number, from: number) =>
+    tempos[from].seconds + (tick - tempos[from].tick) * ((tempos[from].tempo * 1e-6) / mid.ticksPerBeat);
+  const beats: number[] = [];
+  let current = 0;
+  for (let beat = 0; beat < 200_000; beat++) {
+    const tick = beat * mid.ticksPerBeat;
+    while (current + 1 < tempos.length && tempos[current + 1].tick <= tick) current++;
+    const seconds = secondsAt(tick, current);
+    beats.push(seconds);
+    if (seconds > end || mid.ticksPerBeat <= 0) break;
+  }
+  // Tempo de la première note : celui de la dernière valeur lue avant elle
+  const first = notes.length ? notes[0].start : 0;
+  const tempo = tempos.filter((t) => t.seconds <= first + 1e-9).pop()!.tempo;
+  return { notes, trackNames, beats, beatsPerBar: beatsPerBar ?? 4, bpm: 60e6 / tempo };
 }
 
 /**
@@ -105,7 +147,7 @@ export function analyzeInputMidi(fileName: string, bytes: Uint8Array): Note[] {
 }
 
 /** Parties du morceau (une par canal de chaque piste qui a des notes), dans l'ordre des pistes. */
-export function listParts({ notes, trackNames }: MidiInput): Part[] {
+export function listParts({ notes, trackNames }: Tracks): Part[] {
   const parts = new Map<string, Part>();
   for (const { track, channel } of notes) {
     const id = `${track}:${channel}`;
@@ -126,7 +168,7 @@ const MELODY_NAMES = /m[ée]lod|lead|vocal|voice|voix|chant/i;
  * On préfère une partie qui joue une note à la fois, pendant la plus grande part du morceau, dans
  * le médium ou l'aigu, sans trop de silences ; un nom de piste explicite l'emporte.
  */
-export function guessMelodyPart(input: MidiInput): Part | null {
+export function guessMelodyPart(input: Tracks): Part | null {
   const duration = input.notes.reduce((end, n) => Math.max(end, n.start + n.duration), 0);
   let best: Part | null = null;
   let bestScore = -Infinity;
@@ -317,6 +359,51 @@ export interface ExportSettings {
   mono?: boolean;
   /** Les notes étrangères à la gamme reçoivent leur propre accord au lieu de l'accord de repli. */
   chromatic?: boolean;
+  /** Style de strumming du mode accord, joué sur la grille `beats` ; absent : N strums par note. */
+  style?: StrumStyle | null;
+  /** Instant (s du fichier source) de chaque temps du morceau. */
+  beats?: readonly number[];
+  beatsPerBar?: number;
+}
+
+/**
+ * Coups d'un style sur tout le morceau : [nom de l'accord, [(début_sec, fin_sec, hauteur, vélocité)]]
+ * pour chaque coup, en secondes absolues déjà divisées par la vitesse. Un coup coupe le précédent.
+ */
+export function styleEvents(
+  inputNotes: Note[],
+  style: StrumStyle,
+  beats: readonly number[],
+  beatsPerBar: number,
+  harmonyMap: Record<number, string>,
+  speedFactor: number,
+  strumDelayMs: number,
+  transpose = 0,
+  keyShift = 0,
+): [chordName: string, played: [on: number, off: number, pitch: number, velocity: number][]][] {
+  const notes = [...inputNotes].sort((a, b) => a.start - b.start);
+  const starts = notes.map((n) => n.start);
+  const end = notes.reduce((latest, n) => Math.max(latest, n.start + n.duration), 0);
+  const strokes: [string, [number, number, number, number][]][] = [];
+  for (let index = 0; ; index++) {
+    const { time, length } = stepAt(beats, index, style.swing);
+    if (time >= end) break;
+    const step = styleStep(style, beatsPerBar, index);
+    const note = step && chordNoteAt(notes, starts, end, time);
+    if (!step || !note) continue;
+
+    const [chordName, layout] = strumLayout(note, "accord", harmonyMap, transpose, keyShift);
+    const strings = strokeStrings(layout, step);
+    const slot = length / speedFactor;
+    const delaySec = sweepDelay(strumDelayMs, strings.length, slot);
+    const on = time / speedFactor;
+    for (const previous of strokes[strokes.length - 1]?.[1] ?? []) previous[1] = Math.min(previous[1], on);
+    strokes.push([
+      chordName,
+      strings.map(([, , pitch], i) => [on + i * delaySec, on + step.hold * slot + i * delaySec, pitch, step.velocity]),
+    ]);
+  }
+  return strokes;
 }
 
 /** Génère un fichier MIDI avec découpage rythmique et accord guitare pour chaque note. */
@@ -333,6 +420,9 @@ export function generateProcessedMidi(
     program = INSTRUMENTS[DEFAULT_INSTRUMENT],
     mono = false,
     chromatic = false,
+    style = null,
+    beats,
+    beatsPerBar = 4,
   }: ExportSettings,
 ): { midi: Uint8Array<ArrayBuffer>; chords: string } {
   const ticksPerBeat = 480;
@@ -347,10 +437,20 @@ export function generateProcessedMidi(
   const played: [on: number, off: number, pitch: number, velocity: number][] = []; // secondes absolues
   const chordsUsed: string[] = [];
 
+  // Style de strumming : le motif est joué sur les temps du morceau, pas note par note
+  const strokes =
+    mode === "accord" && style && beats?.length
+      ? styleEvents(inputNotes, style, beats, beatsPerBar, harmony, speedFactor, strumDelayMs, transpose, keyShift)
+      : null;
+  for (const [chordName, evs] of strokes ?? []) {
+    chordsUsed.push(transposedChordName(chordName, transpose));
+    played.push(...evs);
+  }
+
   // Une note à la fois : chaque note est coupée au début de la suivante (la plus aiguë de celles
   // qui commencent ensemble est la dernière, donc la seule entendue)
   const notes = mono ? [...inputNotes].sort((a, b) => a.start - b.start || a.pitch - b.pitch) : inputNotes;
-  notes.forEach((note, i) => {
+  (strokes ? [] : notes).forEach((note, i) => {
     const [chordName, evs] = noteEvents(
       note, mode, harmony, strumsCount, speedFactor, strumDelayMs, transpose, keyShift);
     chordsUsed.push(transposedChordName(chordName, transpose));

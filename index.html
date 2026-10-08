@@ -89,6 +89,12 @@
           <fieldset>
             <legend>3. Strumming &amp; Vitesse</legend>
             <div class="grid">
+              <label for="cb-style">Style de strumming (mode Accord) :</label>
+              <select id="cb-style"></select>
+
+              <label for="spin-tempo">Tempo du style (noires par minute) :</label>
+              <input id="spin-tempo" type="number" min="30" max="300" step="1" value="120" />
+
               <label for="spin-strums">Nombre de strums par note :</label>
               <input id="spin-strums" type="number" min="1" max="16" step="1" value="2" />
 

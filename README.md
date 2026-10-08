@@ -43,6 +43,27 @@ machine.
 - **Boucle** : **A** pose le début et **B** la fin à la position courante ; la lecture répète ce
   passage. **Effacer** retire la boucle.
 
+### Styles de strumming
+
+En mode **Accord 6 Cordes**, la liste **Style de strumming** remplace le découpage de chaque note
+en N strums (« Classique ») par un motif rythmique d'une mesure, joué en croches sur les temps du
+morceau. L'accord de chaque coup est celui de la note de mélodie qui sonne à cet instant ; pendant
+un silence de la mélodie, l'accord précédent continue. Un coup coupe le précédent.
+
+| Style | Motif d'une mesure à 4 temps (B = bas, H = haut, . = silence) | Cordes |
+|---|---|---|
+| Feu de camp | B . B H . H B H, premier temps accentué | toutes vers le bas, les 4 aiguës vers le haut |
+| Rock | B B B B B B B B, temps 2 et 4 accentués, notes courtes | les 3 graves |
+| Jazz | B . B . B . B h, temps 2 et 4 accentués, levée ternaire | les 4 graves, levée sur les 3 aiguës |
+| Reggae | . H . H . H . H, coups très courts | les 3 aiguës |
+
+Le **Tempo du style** est lu dans le fichier (changements de tempo compris). Si le fichier n'a pas
+de tempo fiable, saisir une autre valeur : le motif suit alors une pulsation régulière à ce tempo.
+La vitesse s'applique aussi au motif. L'export écrit les mêmes coups que la lecture.
+
+Limites : les cordes étouffées sont imitées par des notes très courtes, la mélodie elle-même n'est
+pas jouée par-dessus le motif, et seul le premier chiffrage de mesure du fichier est pris en compte.
+
 ### Clavier
 
 | Touche | Effet |
@@ -131,6 +152,7 @@ python tools/make_fixtures.py --local chemin/vers/morceau.mid
 | Réglages de départ | « Mélodie seule » décochée. | « Mélodie seule » et « Une seule note ou un seul accord à la fois » cochées. |
 | Fichier sans note | Remplacé par une note de secours. | Refusé avec un message. |
 | Boucle, volume, raccourcis clavier, réglages retenus | Absents. | Présents. |
+| Styles de strumming | Absents : N strums par note. | Feu de camp, rock, jazz, reggae, en plus du découpage par note. |
 
 Les autres limites connues de l'application de bureau sont conservées : export avec un seul jeu de
 réglages, fichiers de type 2 non pris en charge.

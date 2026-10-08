@@ -31,11 +31,13 @@ import {
   keepHighestNotes,
   listParts,
   readMidiInput,
+  uniformBeats,
   type MidiInput,
   type Note,
   type Part,
 } from "./logic";
 import type { LiveParams } from "./player";
+import { STYLES, type StrumStyle } from "./styles";
 import { drawChord } from "./ui/chord";
 import { Timeline } from "./ui/timeline";
 
@@ -55,6 +57,8 @@ const chkMelody = $<HTMLInputElement>("chk-melody");
 const chkMono = $<HTMLInputElement>("chk-mono");
 const chkChromatic = $<HTMLInputElement>("chk-chromatic");
 const cbInstrument = $<HTMLSelectElement>("cb-instrument");
+const cbStyle = $<HTMLSelectElement>("cb-style");
+const spinTempo = $<HTMLInputElement>("spin-tempo");
 const spinStrums = $<HTMLInputElement>("spin-strums");
 const scaleSpeed = $<HTMLInputElement>("scale-speed");
 const scaleStrumSpeed = $<HTMLInputElement>("scale-strum-speed");
@@ -93,6 +97,10 @@ let enabledParts = new Set<string>(); // pistes cochées
 let melodyPart: Part | null = null; // piste qui porte probablement la mélodie
 let inputNotes: Note[] | null = null; // notes des pistes cochées : celles qui sont jouées et exportées
 let detectedKey: Key | null = null; // tonalité détectée dans le fichier
+let fileBeats: number[] = []; // temps du morceau lus dans le fichier
+let fileBpm = 120; // tempo du fichier
+let beatsPerBar = 4;
+let tempoGrid: { bpm: number; beats: number[] } | null = null; // grille du tempo saisi à la main
 let cursor = 0.0; // position (s) d'où part la lecture ; déplaçable à l'arrêt
 let loopStart: number | null = null; // bornes de la boucle (s)
 let loopEnd: number | null = null;
@@ -203,7 +211,35 @@ function onModeChange(): void {
     melodySaved = null;
   }
   chkMelody.disabled = single;
+  updateStyleControls();
   drawTimeline();
+}
+
+// --- Style de strumming ------------------------------------------------------
+
+/** Style joué : aucun en Simple Corde, ni avec « Classique » (N strums par note). */
+function activeStyle(): StrumStyle | null {
+  return mode() === "accord" ? (STYLES[cbStyle.value] ?? null) : null;
+}
+
+/**
+ * Temps du morceau sur lesquels le style est joué : ceux du fichier, ou une grille régulière si
+ * le tempo affiché a été modifié (fichier sans tempo fiable).
+ */
+function styleBeats(): readonly number[] {
+  const bpm = Math.trunc(Number(spinTempo.value));
+  const min = Number(spinTempo.min);
+  if (!(bpm >= min && bpm <= Number(spinTempo.max)) || bpm === Math.round(fileBpm)) return fileBeats;
+  if (tempoGrid?.bpm !== bpm) tempoGrid = { bpm, beats: uniformBeats(bpm, songDuration) };
+  return tempoGrid.beats;
+}
+
+/** Le style ne concerne que le mode accord ; il remplace le nombre de strums par note. */
+function updateStyleControls(): void {
+  const style = activeStyle();
+  cbStyle.disabled = mode() !== "accord";
+  spinTempo.disabled = !style || !inputNotes;
+  spinStrums.disabled = style !== null;
 }
 
 function fillScales(): void {
@@ -435,6 +471,9 @@ async function loadFile(file: File): Promise<void> {
   // La tonalité est cherchée dans tout le fichier : elle ne change pas avec les pistes cochées
   detectedKey = detectKey(fileNotes);
   songDuration = Math.max(...fileNotes.map((n) => n.start + n.duration));
+  fileBeats = input.beats;
+  fileBpm = input.bpm;
+  beatsPerBar = input.beatsPerBar;
   lblFile.textContent = file.name;
   lblFile.classList.remove("muted");
   openFile();
@@ -443,6 +482,8 @@ async function loadFile(file: File): Promise<void> {
 /** Remet à zéro ce qui dépend du fichier (position, boucle, tonalité corrigée), puis l'affiche. */
 function openFile(): void {
   cursor = 0.0;
+  tempoGrid = null;
+  spinTempo.value = String(Math.round(fileBpm));
   cbFileKey.value = "";
   fillFileKeys();
   fillTracks();
@@ -451,6 +492,7 @@ function openFile(): void {
   onTracksChange();
   onHarmonyChange();
   updateTransport();
+  updateStyleControls();
   showCursor();
 }
 
@@ -463,6 +505,9 @@ function closeFile(): void {
   enabledParts = new Set();
   detectedKey = null;
   songDuration = 0.0;
+  fileBeats = [];
+  fileBpm = 120;
+  beatsPerBar = 4;
   lblFile.textContent = "Aucun fichier sélectionné";
   lblFile.classList.add("muted");
   openFile();
@@ -470,6 +515,7 @@ function closeFile(): void {
   lblStatus.textContent = "En attente d'un fichier...";
   drawTimeline();
   updateTransport();
+  updateStyleControls();
   showCursor();
 }
 
@@ -497,6 +543,9 @@ function readLiveParams(): LiveParams {
     mono: chkMono.checked,
     chromatic: chkChromatic.checked,
     loop: loopRange(),
+    style: activeStyle(),
+    beats: styleBeats(),
+    beatsPerBar,
   };
 }
 
@@ -560,7 +609,7 @@ function pollPlayer(): void {
   }
   const p = readLiveParams();
   const modeName = p.mode === "accord" ? "Accord 6 cordes" : "Simple corde";
-  const state = `${modeName} | x${p.speed.toFixed(2)} | ${p.strums} strums`;
+  const state = `${modeName} | x${p.speed.toFixed(2)} | ${p.style ? p.style.label : `${p.strums} strums`}`;
   lblStatus.textContent = playback.paused ? `En pause | ${state}` : state;
   showPosition(view.position);
   // En pause, la frise ne suit la tête de lecture que si elle bouge : on peut la parcourir librement
@@ -605,6 +654,9 @@ function exportMidi(): void {
     program: INSTRUMENTS[cbInstrument.value],
     mono: chkMono.checked,
     chromatic: chkChromatic.checked,
+    style: activeStyle(),
+    beats: styleBeats(),
+    beatsPerBar,
   });
 
   // Le navigateur enregistre le fichier dans son dossier de téléchargements
@@ -631,6 +683,7 @@ function saveSettings(): void {
     chromatic: chkChromatic.checked,
     notation: notation(),
     instrument: cbInstrument.value,
+    style: cbStyle.value,
     strums: getStrums(),
     speed: Number(scaleSpeed.value),
     delayMs: Number(scaleStrumSpeed.value),
@@ -677,6 +730,7 @@ function restoreSettings(): void {
   check(chkMono, saved.mono);
   check(chkChromatic, saved.chromatic);
   if (typeof saved.instrument === "string" && saved.instrument in INSTRUMENTS) cbInstrument.value = saved.instrument;
+  if (typeof saved.style === "string" && saved.style in STYLES) cbStyle.value = saved.style;
   const strums = number(saved.strums);
   if (strums !== null) spinStrums.value = String(Math.max(1, Math.min(MAX_STRUMS, Math.trunc(strums))));
   slide(scaleSpeed, saved.speed);
@@ -713,6 +767,10 @@ function onKeyDown(event: KeyboardEvent): void {
 function setupUi(): void {
   cbInstrument.replaceChildren(...Object.keys(INSTRUMENTS).map((name) => new Option(name)));
   cbInstrument.value = DEFAULT_INSTRUMENT;
+  cbStyle.replaceChildren(
+    new Option("Classique (strums par note)", ""),
+    ...Object.entries(STYLES).map(([id, style]) => new Option(style.label, id)),
+  );
   restoreSettings();
   fillFileKeys();
   // Tout réglage modifié est retenu pour la prochaine visite
@@ -720,6 +778,7 @@ function setupUi(): void {
 
   cbScale.addEventListener("change", onHarmonyChange);
   cbFileKey.addEventListener("change", onHarmonyChange);
+  cbStyle.addEventListener("change", updateStyleControls);
   chkChromatic.addEventListener("change", drawTimeline);
   tracksList.addEventListener("change", () => {
     enabledParts = new Set([...tracksList.querySelectorAll("input")].filter((b) => b.checked).map((b) => b.value));

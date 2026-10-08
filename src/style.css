@@ -153,7 +153,8 @@ button:disabled {
   white-space: pre;
 }
 
-#spin-strums {
+#spin-strums,
+#spin-tempo {
   width: 5em;
 }
 

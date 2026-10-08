@@ -1,5 +1,6 @@
 import { GATE_RATIO, MAX_STRUMS, OPEN_STRINGS, harmonyMap, type Mode } from "./guitar";
-import { keepHighestNotes, strumLayout, sweepDelay, type Note } from "./logic";
+import { keepHighestNotes, strumLayout, sweepDelay, type Note, type StringHit } from "./logic";
+import { chordNoteAt, firstStepFrom, stepAt, strokeStrings, styleStep, type StrumStyle } from "./styles";
 
 /** Réglages lus par le moteur à chaque pas. */
 export interface LiveParams {
@@ -18,6 +19,15 @@ export interface LiveParams {
   chromatic: boolean;
   /** Boucle [début, fin] en secondes du fichier source : arrivée à la fin, la lecture repart du début. */
   loop: readonly [start: number, end: number] | null;
+  /**
+   * Style de strumming du mode accord, joué sur la grille `beats` ; absent : N strums par note,
+   * comme l'application de bureau.
+   */
+  style?: StrumStyle | null;
+  /** Instant (s du fichier source) de chaque temps du morceau. */
+  beats?: readonly number[];
+  /** Noires par mesure (4 par défaut). */
+  beatsPerBar?: number;
 }
 
 /** Sortie sonore. `time` est l'heure exacte de l'événement, sur l'horloge donnée à `tick`. */
@@ -131,9 +141,14 @@ function bisectRight(values: number[], x: number): number {
  *
  * En pause, les pas continuent : la position ne bouge plus que par déplacement et rien n'est
  * frappé. À la reprise, la note qui se trouve sous la position est rejouée.
+ *
+ * Avec un style de strumming, les coups ne suivent plus les notes mais le motif du style, posé
+ * sur les temps du morceau : chaque coup joue l'accord de la note qui sonne à cet instant, et
+ * coupe le coup précédent. Un réglage modifié s'entend au coup suivant.
  */
 export class LivePlayer {
   static readonly LATE_MAX = 0.05; // retard maximal rattrapé pour placer un strum à son heure exacte (s)
+  static readonly STALE = 0.25; // retard (s) au-delà duquel un coup de style n'est plus joué
 
   private allNotes: Note[] = [];
   private melodyNotes: Note[] = [];
@@ -163,6 +178,13 @@ export class LivePlayer {
   private nextNote = 0;
   private srcTime = 0.0;
   private last: number;
+  // Styles de strumming : style et grille en cours, prochain pas du motif (null = à recalculer),
+  // fin de la dernière note, et propriétaire fictif des coups (un coup coupe le précédent)
+  private style: StrumStyle | null = null;
+  private beats: readonly number[] | undefined;
+  private step: number | null = null;
+  private notesEnd = 0.0;
+  private readonly styleOwner: Note = { pitch: 0, start: 0, duration: 0, velocity: 0, track: -1, channel: -1 };
 
   constructor(
     notes: Note[],
@@ -242,10 +264,59 @@ export class LivePlayer {
     this.heap.clear();
     this.generation.clear();
     this.active.clear();
+    this.step = null;
     this.nextNote = bisectRight(this.starts, this.srcTime);
     for (let i = 0; i < this.nextNote; i++) {
       const n = this.notes[i];
       if (n.start + n.duration > this.srcTime) this.active.set(n, { last: null, soundKey: null });
+    }
+  }
+
+  /**
+   * Programme une frappe : les cordes de `strings` sonnent l'une après l'autre, à `delay` secondes
+   * d'intervalle, de `tOn` à `tOff`. Elle coupe ce que `owner` faisait encore sonner.
+   */
+  private strike(
+    owner: Note, strings: StringHit[], tOn: number, tOff: number, delay: number, velocity: number, now: number,
+  ): void {
+    this.silence(now, owner);
+    const generation = (this.generation.get(owner) ?? 0) + 1;
+    this.generation.set(owner, generation);
+    strings.forEach(([string, , pitch], i) => {
+      const on = tOn + i * delay;
+      const off = Math.max(on + 0.03, tOff + i * delay);
+      const noteId = this.counter;
+      this.heap.push({ time: on, order: noteId, on: true, pitch, velocity, noteId, owner, generation, string });
+      this.heap.push({ time: off, order: noteId + 1, on: false, pitch, velocity: 0, noteId, owner, generation, string });
+      this.counter += 2;
+    });
+  }
+
+  /** Joue les coups du style échus depuis le dernier pas du moteur. */
+  private strumStyle(style: StrumStyle, p: LiveParams, now: number): void {
+    const beats = p.beats!;
+    this.step ??= firstStepFrom(beats, this.srcTime, style.swing);
+    const harmony = harmonyMap(p.scale, p.chromatic);
+    for (;;) {
+      const { time, length } = stepAt(beats, this.step, style.swing);
+      if (time > this.srcTime || length <= 0) break;
+      const step = styleStep(style, p.beatsPerBar ?? 4, this.step);
+      this.step++;
+      const late = (this.srcTime - time) / p.speed;
+      const note = step && late <= LivePlayer.STALE ? chordNoteAt(this.notes, this.starts, this.notesEnd, time) : null;
+      if (!step || !note) continue;
+
+      const [chord, layout] = strumLayout(note, "accord", harmony, p.transpose, p.keyShift);
+      const strings = strokeStrings(layout, step);
+      const slot = length / p.speed; // durée réelle d'une croche
+      const tOn = late <= LivePlayer.LATE_MAX ? now - late : now;
+      const delay = sweepDelay(p.delayMs, strings.length, slot);
+      this.strike(this.styleOwner, strings, tOn, now - late + step.hold * slot, delay, step.velocity, now);
+
+      this.currentChord = chord;
+      const frets: (number | null)[] = OPEN_STRINGS.map(() => null);
+      for (const [string, fret] of layout) frets[string] = fret;
+      this.display = { mode: "accord", chord, frets, up: step.up, transpose: p.transpose, pitch: layout[0][2] };
     }
   }
 
@@ -281,6 +352,14 @@ export class LivePlayer {
       this.melody = p.melody;
       this.notes = p.melody ? this.melodyNotes : this.allNotes;
       this.starts = this.notes.map((n) => n.start);
+      this.notesEnd = this.notes.reduce((end, n) => Math.max(end, n.start + n.duration), 0);
+      resync = true;
+    }
+    // Passage d'un style à l'autre, ou au découpage par note : on repart de la position courante
+    const style = p.mode === "accord" && p.style && p.beats?.length ? p.style : null;
+    if (style !== this.style || (style && p.beats !== this.beats)) {
+      this.style = style;
+      this.beats = p.beats;
       resync = true;
     }
     if (resync) this.resync(now);
@@ -297,7 +376,10 @@ export class LivePlayer {
     }
     if (this.paused) return true;
 
-    if (p.mono && this.active.size > 1) {
+    if (style) {
+      this.active.clear(); // les coups suivent le motif, pas les notes
+      this.strumStyle(style, p, now);
+    } else if (p.mono && this.active.size > 1) {
       // Une note à la fois : seule la dernière commencée reste (la plus aiguë, si elles commencent ensemble)
       let kept: Note | null = null;
       for (const n of this.active.keys()) {
@@ -313,7 +395,7 @@ export class LivePlayer {
 
     const harmony = harmonyMap(p.scale, p.chromatic);
     const strums = Math.max(1, Math.min(MAX_STRUMS, p.strums));
-    for (const [note, state] of [...this.active]) {
+    for (const [note, state] of style ? [] : [...this.active]) {
       const pos = srcTime - note.start;
       if (pos >= note.duration) {
         this.active.delete(note);
@@ -338,25 +420,10 @@ export class LivePlayer {
       state.soundKey = soundKey;
       this.currentChord = chord;
 
-      // Nouvelle frappe : coupe ce que cette note faisait encore sonner
-      this.silence(now, note);
-      const generation = (this.generation.get(note) ?? 0) + 1;
-      this.generation.set(note, generation);
       const delay = sweepDelay(p.delayMs, layout.length, slot / speed);
       // Alternance coup vers le bas (Down) / coup vers le haut (Up)
       const up = index % 2 === 1;
-      const ordered = up ? [...layout].reverse() : layout;
-      const velocity = up ? 80 : 95;
-      ordered.forEach(([string, , pitch], i) => {
-        const on = tOn + i * delay;
-        const off = Math.max(on + 0.03, tOff + i * delay);
-        const noteId = this.counter;
-        this.heap.push({ time: on, order: noteId, on: true, pitch, velocity, noteId, owner: note, generation, string });
-        this.heap.push({
-          time: off, order: noteId + 1, on: false, pitch, velocity: 0, noteId, owner: note, generation, string,
-        });
-        this.counter += 2;
-      });
+      this.strike(note, up ? [...layout].reverse() : layout, tOn, tOff, delay, up ? 80 : 95, now);
 
       const frets: (number | null)[] = OPEN_STRINGS.map(() => null);
       for (const [string, fret] of layout) frets[string] = fret;
