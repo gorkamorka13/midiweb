@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Fichiers de test : octets à conserver tels quels (fins de ligne, BOM)
+tests/fixtures/files/* -text
