@@ -4,7 +4,7 @@ import { harmonyMap } from "../src/guitar";
 import { generateProcessedMidi, readMidiInput, styleEvents, uniformBeats, type Note } from "../src/logic";
 import { parseMidi } from "../src/midifile";
 import { LivePlayer, type LiveParams, type MidiOut } from "../src/player";
-import { STYLES, firstStepFrom, stepAt, styleStep } from "../src/styles";
+import { STYLES, chordNoteAt, firstStepFrom, stepAt, styleStep } from "../src/styles";
 
 // Styles de strumming : absents de midi.py, ces tests décrivent leur comportement dans la version web.
 
@@ -263,5 +263,31 @@ describe("export avec un style", () => {
     const plain = generateProcessedMidi(song.notes, { ...base, mode: "corde" });
     const styled = generateProcessedMidi(song.notes, { ...base, mode: "corde", style: STYLES.rock, beats: song.beats });
     expect(styled.midi).toEqual(plain.midi);
+  });
+});
+
+describe("chordNoteAt : blancs de la mélodie", () => {
+  const note = (pitch: number, start: number, duration: number): Note => ({
+    pitch, start, duration, velocity: 90, track: 0, channel: 0, tick: 0,
+  });
+  const notes = [note(69, 0, 1), note(72, 1, 1), note(69, 6, 1)];
+  const starts = notes.map((n) => n.start);
+
+  it("prolonge l'accord pendant un court blanc", () => {
+    expect(chordNoteAt(notes, starts, 7, 2.5)?.pitch).toBe(72);
+  });
+
+  it("se tait quand le blanc dépasse une seconde", () => {
+    expect(chordNoteAt(notes, starts, 7, 3.5)).toBeNull();
+    expect(chordNoteAt(notes, starts, 7, 5.9)).toBeNull();
+  });
+
+  it("reprend avec la note suivante", () => {
+    expect(chordNoteAt(notes, starts, 7, 6)?.pitch).toBe(69);
+  });
+
+  it("continue tant qu'une note plus longue d'une autre voix sonne", () => {
+    const voices = [note(48, 0, 8), note(72, 1, 0.5)];
+    expect(chordNoteAt(voices, voices.map((n) => n.start), 8, 5)?.pitch).toBe(72);
   });
 });

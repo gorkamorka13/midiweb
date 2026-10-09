@@ -32,6 +32,10 @@ export interface StrumStyle {
 export const STEPS_PER_BEAT = 2;
 /** Avance (s) tolérée pour une note qui commence juste après un coup : c'est déjà son accord. */
 const CHORD_EARLY = 0.05;
+/** Durée (s) d'un blanc de la mélodie au-delà de laquelle le style se tait au lieu de prolonger l'accord. */
+const CHORD_GAP_MAX = 1;
+/** Nombre de notes précédentes examinées pour savoir si l'une d'elles sonne encore. */
+const CHORD_LOOKBACK = 32;
 
 const ACCENT = 112;
 const NORMAL = 92;
@@ -135,8 +139,9 @@ export function strokeStrings(layout: StringHit[], step: StyleStep): StringHit[]
 
 /**
  * Note qui donne l'accord d'un coup joué à l'instant `time` : la dernière commencée. Pendant un
- * silence de la mélodie, c'est donc l'accord précédent qui continue ; rien avant la première note
- * ni après la fin de la dernière (`end`).
+ * court silence de la mélodie, c'est donc l'accord précédent qui continue ; rien avant la
+ * première note, ni après la fin de la dernière (`end`), ni quand plus aucune note ne sonne
+ * depuis plus de `CHORD_GAP_MAX`.
  *
  * @param notes notes triées par début
  * @param starts leurs débuts
@@ -150,5 +155,9 @@ export function chordNoteAt(notes: Note[], starts: number[], end: number, time: 
     if (time + CHORD_EARLY < starts[mid]) high = mid;
     else low = mid + 1;
   }
-  return low ? notes[low - 1] : null;
+  if (!low) return null;
+  for (let i = low - 1; i >= Math.max(0, low - CHORD_LOOKBACK); i--) {
+    if (notes[i].start + notes[i].duration + CHORD_GAP_MAX >= time) return notes[low - 1];
+  }
+  return null;
 }

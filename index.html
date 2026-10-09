@@ -328,7 +328,17 @@
             <div id="lbl-chord-sub" class="chord-sub muted"></div>
             <div id="lbl-stroke" class="stroke"></div>
           </div>
-          <canvas id="cv-chord" role="img" aria-label="Diagramme de l'accord joué"></canvas>
+          <div class="now-diagram">
+            <canvas id="cv-chord" role="img" aria-label="Diagramme de l'accord joué"></canvas>
+            <label class="check">
+              <input id="chk-horizontal" type="checkbox" />
+              <span>Horizontal</span>
+            </label>
+            <label class="check">
+              <input id="chk-nut" type="checkbox" />
+              <span>Depuis le sillet</span>
+            </label>
+          </div>
         </section>
 
         <!-- 5. Frise du morceau : notes, accords, position de lecture -->

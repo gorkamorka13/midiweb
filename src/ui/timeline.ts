@@ -64,6 +64,8 @@ export class Timeline {
     onSeek: (seconds: number) => void,
     /** Clic sur le nom d'un accord, donné par le début (s) de la note qui le porte. */
     onName: (start: number) => void,
+    /** Double clic sur la ligne rouge : jouer ce qu'elle désigne. */
+    onPlayheadDouble: () => void = () => {},
   ) {
     this.measure.font = FONT_NAME; // largeur des noms ; celle des repères de l'axe est surestimée, sans gêne
     this.spacer.style.height = `${TL_H}px`;
@@ -112,6 +114,10 @@ export class Timeline {
     canvas.addEventListener("pointerup", (event) => release(event, false));
     canvas.addEventListener("pointercancel", (event) => release(event, true));
 
+    canvas.addEventListener("dblclick", (event) => {
+      if (this.onPlayhead(event)) onPlayheadDouble();
+    });
+
     // La molette fait défiler la frise, quand elle dépasse de la fenêtre
     scroller.addEventListener(
       "wheel",
@@ -140,7 +146,7 @@ export class Timeline {
   }
 
   /** Le pointeur est sur la ligne rouge (ou assez près pour la saisir). */
-  private onPlayhead(event: PointerEvent): boolean {
+  private onPlayhead(event: MouseEvent): boolean {
     if (this.playhead === null) return false;
     return Math.abs(this.x(this.playhead) - (this.scroller.scrollLeft + event.offsetX)) <= TL_GRAB;
   }

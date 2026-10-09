@@ -41,6 +41,7 @@ import {
   setChord,
   smoothChords,
   strumLayout,
+  sweepDelay,
   uniformBeats,
   type ChordMark,
   type Marker,
@@ -72,6 +73,8 @@ const chkMelody = $<HTMLInputElement>("chk-melody");
 const chkMono = $<HTMLInputElement>("chk-mono");
 const chkChromatic = $<HTMLInputElement>("chk-chromatic");
 const chkSmooth = $<HTMLInputElement>("chk-smooth");
+const chkHorizontal = $<HTMLInputElement>("chk-horizontal");
+const chkNut = $<HTMLInputElement>("chk-nut");
 const cbInstrument = $<HTMLSelectElement>("cb-instrument");
 const cbStyle = $<HTMLSelectElement>("cb-style");
 const spinTempo = $<HTMLInputElement>("spin-tempo");
@@ -151,6 +154,7 @@ const timeline = new Timeline(
   $<HTMLCanvasElement>("cv-timeline"),
   (seconds) => seekTo(seconds, false),
   (start) => editChord(start),
+  () => void previewCursor(),
 );
 
 function checked(name: string): string {
@@ -305,8 +309,15 @@ function onNotationChange(): void {
   // ce qui est affiché à la position choisie
   if (playback) return;
   if (!inputNotes || lblChord.textContent === "—") {
-    drawChord(cvChord, null, null, notation()); // noms des cordes
+    drawChord(cvChord, null, null, notation(), chkHorizontal.checked, chkNut.checked); // noms des cordes
   }
+}
+
+/** Le sens du diagramme a changé : en lecture, `pollPlayer` le redessine à l'image suivante. */
+function redrawChord(): void {
+  if (playback) return;
+  if (inputNotes && lblChord.textContent !== "—") showCursorChord();
+  else drawChord(cvChord, null, null, notation(), chkHorizontal.checked, chkNut.checked);
 }
 
 // --- Pistes ------------------------------------------------------------------
@@ -478,7 +489,7 @@ function updateNowPlaying(view: PlaybackView): void {
   lblChord.textContent = title;
   lblChordSub.textContent = `${modeName}\n${detail}`;
   lblStroke.textContent = stroke;
-  drawChord(cvChord, d, view.lit, notation());
+  drawChord(cvChord, d, view.lit, notation(), chkHorizontal.checked, chkNut.checked);
 }
 
 /**
@@ -507,11 +518,29 @@ function showCursorChord(): void {
   updateNowPlaying({ position: cursor, display: displayAt(cursor), lit: [], finished: false });
 }
 
+/** Double clic sur la ligne rouge : fait sonner l'accord ou la note de la position choisie. */
+async function previewCursor(): Promise<void> {
+  if (!inputNotes || starting || (playback && !playback.paused)) return; // en lecture, ça sonne déjà
+  const here = displayAt(playback ? playback.view().position : cursor);
+  if (!here) return;
+  try {
+    audio ??= new AudioOutput(volume());
+    await audio.prepare(INSTRUMENTS[cbInstrument.value]);
+    const pitches = here.frets.flatMap((fret, string) =>
+      fret === null ? [] : [OPEN_STRINGS[string] + fret + here.transpose],
+    );
+    const hold = here.mode === "accord" ? 1.2 : 0.8;
+    audio.strum(pitches, 95, sweepDelay(Number(scaleStrumSpeed.value), pitches.length, hold), hold);
+  } catch (e) {
+    showMessage("Erreur Audio", `Échec de la lecture audio : ${errorText(e)}`);
+  }
+}
+
 function clearNowPlaying(lit: boolean[] | null = null): void {
   lblChord.textContent = "—";
   lblChordSub.textContent = "\n";
   lblStroke.textContent = "";
-  drawChord(cvChord, null, lit, notation());
+  drawChord(cvChord, null, lit, notation(), chkHorizontal.checked, chkNut.checked);
 }
 
 function showPosition(seconds: number): void {
@@ -901,6 +930,8 @@ function readSettings(): Record<string, unknown> {
     mono: chkMono.checked,
     chromatic: chkChromatic.checked,
     smooth: chkSmooth.checked,
+    horizontal: chkHorizontal.checked,
+    fromNut: chkNut.checked,
     notation: notation(),
     instrument: cbInstrument.value,
     style: cbStyle.value,
@@ -948,6 +979,8 @@ function applySettings(saved: Record<string, unknown>): void {
   check(chkMono, saved.mono);
   check(chkChromatic, saved.chromatic);
   check(chkSmooth, saved.smooth);
+  check(chkHorizontal, saved.horizontal);
+  check(chkNut, saved.fromNut);
   if (typeof saved.instrument === "string" && saved.instrument in INSTRUMENTS) cbInstrument.value = saved.instrument;
   // "" : le style « Classique », qui n'est pas dans STYLES
   if (typeof saved.style === "string" && (saved.style === "" || saved.style in STYLES)) cbStyle.value = saved.style;
@@ -1060,6 +1093,12 @@ function setupUi(): void {
   cbStyle.addEventListener("change", updateStyleControls);
   chkChromatic.addEventListener("change", drawTimeline);
   chkSmooth.addEventListener("change", onSmoothChange);
+  for (const chk of [chkHorizontal, chkNut]) {
+    chk.addEventListener("change", () => {
+      saveSettings();
+      redrawChord();
+    });
+  }
   tracksList.addEventListener("change", () => {
     enabledParts = new Set([...tracksList.querySelectorAll("input")].filter((b) => b.checked).map((b) => b.value));
     onTracksChange();

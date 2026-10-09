@@ -108,6 +108,18 @@ export class AudioOutput implements MidiOut {
     this.voices.get(pitch)?.(time);
     this.voices.delete(pitch);
   }
+
+  /**
+   * Joue tout de suite un accord ou une note (aperçu à l'arrêt) : les cordes se suivent à `delay`
+   * secondes d'intervalle et se taisent `hold` secondes après la première.
+   */
+  strum(pitches: readonly number[], velocity: number, delay: number, hold: number): void {
+    const start = this.context.currentTime + 0.02;
+    pitches.forEach((pitch, i) => {
+      this.noteOn(pitch, velocity, start + i * delay);
+      this.noteOff(pitch, start + hold + i * delay);
+    });
+  }
 }
 
 /** Avance du moteur sur l'horloge audio (s) : les notes sont programmées à leur heure exacte. */

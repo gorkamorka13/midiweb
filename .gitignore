@@ -3,3 +3,6 @@ dist/
 tests/fixtures/local/
 __pycache__/
 *.log
+.claude/
+examples/partition.*
+examples/diagram.png

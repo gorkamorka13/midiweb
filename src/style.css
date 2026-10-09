@@ -670,6 +670,14 @@ body.dropping .stage {
   font-weight: 600;
 }
 
+.now-diagram {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 #cv-chord {
   flex: none;
   display: block;
