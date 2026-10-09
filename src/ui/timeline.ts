@@ -9,6 +9,8 @@ const TL_NAME_BOTTOM = TL_NAME_Y + 14;
 const TL_BOTTOM = TL_H - 22; // au-dessus de l'axe du temps
 const TL_PAD = 10;
 const TL_MAX_SCALE = 400; // pixels par seconde au plus : au-delà, les noms trop serrés sont omis
+const TL_GRAB = 8; // pixels de part et d'autre de la ligne rouge où elle peut être saisie
+const TL_PAN_THRESHOLD = 4; // pixels de glissement à partir desquels un clic devient un défilement
 const TL_FOLLOW = 0.3; // en lecture, la tête de lecture reste à cette fraction de la largeur visible
 
 /** Ce que la frise montre : les notes du fichier et le nom de ce qui est joué pour chacune. */
@@ -41,6 +43,7 @@ export class Timeline {
   private playhead: number | null = null; // position de lecture (s), null = masquée
   private loopStart: number | null = null; // bornes de la boucle (s)
   private loopEnd: number | null = null;
+  private pan: { x: number; scroll: number; moved: boolean } | null = null; // partition saisie à la souris
   private dragSeek = false; // un glissement au doigt déplace la lecture au lieu de faire défiler
   private bars: { x1: number; x2: number; y: number; used: boolean }[] = [];
   private barHeight = 2;
@@ -72,24 +75,38 @@ export class Timeline {
       }
       pressed = this.nameAt(event);
       if (pressed !== null) return; // le clic sur un accord le modifie, sans déplacer la lecture
-      this.held = true;
       canvas.setPointerCapture(event.pointerId);
+      if (event.pointerType === "mouse" && !this.dragSeek && !this.onPlayhead(event)) {
+        // souris : saisir la partition ailleurs que sur la ligne rouge la fait glisser
+        this.pan = { x: event.clientX, scroll: scroller.scrollLeft, moved: false };
+        scroller.classList.add("panning");
+        return;
+      }
+      this.held = true;
       seek(event);
     });
     canvas.addEventListener("pointermove", (event) => {
       if (this.held) seek(event);
+      else if (this.pan) {
+        const dx = event.clientX - this.pan.x;
+        if (Math.abs(dx) > TL_PAN_THRESHOLD) this.pan.moved = true;
+        if (this.pan.moved) scroller.scrollLeft = this.pan.scroll - dx;
+      } else if (event.pointerType === "mouse") {
+        canvas.style.cursor = this.onPlayhead(event) ? "ew-resize" : "grab";
+      }
     });
-    canvas.addEventListener("pointerup", (event) => {
-      const name = this.nameAt(event);
+    const release = (event: PointerEvent, cancelled: boolean) => {
+      const name = cancelled ? null : this.nameAt(event);
       if (name !== null && (tap || name === pressed)) onName(name);
-      else if (tap) seek(event);
+      else if (!cancelled && tap) seek(event);
+      else if (!cancelled && this.pan && !this.pan.moved) seek(event); // simple clic : place la lecture
       tap = this.held = false;
+      this.pan = null;
       pressed = null;
-    });
-    canvas.addEventListener("pointercancel", () => {
-      tap = this.held = false;
-      pressed = null;
-    });
+      scroller.classList.remove("panning");
+    };
+    canvas.addEventListener("pointerup", (event) => release(event, false));
+    canvas.addEventListener("pointercancel", (event) => release(event, true));
 
     // La molette fait défiler la frise, quand elle dépasse de la fenêtre
     scroller.addEventListener(
@@ -116,6 +133,12 @@ export class Timeline {
 
   private x(seconds: number): number {
     return TL_PAD + this.scale * seconds;
+  }
+
+  /** Le pointeur est sur la ligne rouge (ou assez près pour la saisir). */
+  private onPlayhead(event: PointerEvent): boolean {
+    if (this.playhead === null) return false;
+    return Math.abs(this.x(this.playhead) - (this.scroller.scrollLeft + event.offsetX)) <= TL_GRAB;
   }
 
   /** Début (s) de l'accord dont le nom est sous le pointeur, en mode accord ; null ailleurs. */
@@ -298,8 +321,8 @@ export class Timeline {
   /** Place la tête de lecture et, si `follow`, fait défiler la frise pour la suivre. */
   movePlayhead(seconds: number, follow = true): void {
     this.playhead = seconds;
-    if (follow && !this.held) {
-      // pendant un clic maintenu, la frise ne bouge pas sous le pointeur
+    if (follow && !this.held && !this.pan) {
+      // pendant un clic maintenu ou un glissement de la partition, la frise ne bouge pas sous le pointeur
       this.scroller.scrollLeft = Math.max(0.0, this.x(seconds) - this.viewWidth * TL_FOLLOW);
     }
     this.render();

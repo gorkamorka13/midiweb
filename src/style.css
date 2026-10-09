@@ -698,6 +698,10 @@ body.dropping .stage {
   touch-action: none;
 }
 
+.tl-scroll.panning #cv-timeline {
+  cursor: grabbing !important;
+}
+
 .tl-spacer {
   min-width: 100%;
 }
