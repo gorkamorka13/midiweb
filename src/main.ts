@@ -173,6 +173,7 @@ const timeline = new Timeline(
   (start) => editChord(start),
   () => void previewCursor(),
   $<HTMLCanvasElement>("cv-tab"),
+  dragLoopBound,
 );
 
 function checked(name: string): string {
@@ -697,6 +698,13 @@ function setLoopBound(end: boolean): void {
   if (end) loopEnd = position;
   else loopStart = position;
   if (loopStart !== null && loopEnd !== null && loopStart > loopEnd) [loopStart, loopEnd] = [loopEnd, loopStart];
+  updateLoop();
+}
+
+/** Une borne de la boucle est glissée sur la frise : elle ne passe pas de l'autre côté de l'autre borne. */
+function dragLoopBound(bound: "start" | "end", seconds: number): void {
+  if (bound === "start") loopStart = loopEnd === null ? seconds : Math.min(seconds, loopEnd);
+  else loopEnd = loopStart === null ? seconds : Math.max(seconds, loopStart);
   updateLoop();
 }
 

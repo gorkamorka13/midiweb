@@ -50,6 +50,7 @@ export class Timeline {
   private loopStart: number | null = null; // bornes de la boucle (s)
   private loopEnd: number | null = null;
   private pan: { x: number; scroll: number; moved: boolean } | null = null; // partition saisie à la souris
+  private loopDrag: "start" | "end" | null = null; // borne de la boucle saisie à la souris
   private dragSeek = false; // un glissement au doigt déplace la lecture au lieu de faire défiler
   private bars: { x1: number; x2: number; y: number; used: boolean }[] = [];
   private barHeight = 2;
@@ -72,6 +73,8 @@ export class Timeline {
     onPlayheadDouble: () => void = () => {},
     /** Bande Simple Corde sous la frise (même défilement, même échelle) : son canevas. */
     tabCanvas?: HTMLCanvasElement,
+    /** Une borne de la boucle est glissée à la souris : sa nouvelle position (s). */
+    onLoopDrag: (bound: "start" | "end", seconds: number) => void = () => {},
   ) {
     this.measure.font = FONT_NAME; // largeur des noms ; celle des repères de l'axe est surestimée, sans gêne
     this.lane = tabCanvas ? new TabLane(tabCanvas) : null;
@@ -91,6 +94,8 @@ export class Timeline {
         pressed = this.nameAt(event);
         if (pressed !== null) return; // le clic sur un accord le modifie, sans déplacer la lecture
         target.setPointerCapture(event.pointerId);
+        this.loopDrag = event.pointerType === "mouse" ? this.loopBoundAt(event) : null;
+        if (this.loopDrag) return; // la borne se glisse, la lecture ne bouge pas
         if (event.pointerType === "mouse" && !this.dragSeek && !this.onPlayhead(event)) {
           // souris : saisir la partition ailleurs que sur la ligne rouge la fait glisser
           this.pan = { x: event.clientX, scroll: scroller.scrollLeft, moved: false };
@@ -101,21 +106,27 @@ export class Timeline {
         seek(event);
       });
       target.addEventListener("pointermove", (event) => {
-        if (this.held) seek(event);
+        if (this.loopDrag) {
+          const seconds = (scroller.scrollLeft + event.offsetX - TL_PAD) / this.scale;
+          onLoopDrag(this.loopDrag, Math.max(0, Math.min(this.model?.duration ?? seconds, seconds)));
+        } else if (this.held) seek(event);
         else if (this.pan) {
           const dx = event.clientX - this.pan.x;
           if (Math.abs(dx) > TL_PAN_THRESHOLD) this.pan.moved = true;
           if (this.pan.moved) scroller.scrollLeft = this.pan.scroll - dx;
         } else if (event.pointerType === "mouse") {
-          target.style.cursor = this.onPlayhead(event) ? "ew-resize" : "grab";
+          target.style.cursor = this.loopBoundAt(event) || this.onPlayhead(event) ? "ew-resize" : "grab";
         }
       });
       const release = (event: PointerEvent, cancelled: boolean) => {
-        const name = cancelled ? null : this.nameAt(event);
-        if (name !== null && (tap || name === pressed)) onName(name);
+        // Une borne glissée a déjà suivi le pointeur : ni clic ni déplacement de la lecture
+        const name = cancelled || this.loopDrag ? null : this.nameAt(event);
+        if (this.loopDrag) tap = false;
+        else if (name !== null && (tap || name === pressed)) onName(name);
         else if (!cancelled && tap) seek(event);
         else if (!cancelled && this.pan && !this.pan.moved) seek(event); // simple clic : place la lecture
         tap = this.held = false;
+        this.loopDrag = null;
         this.pan = null;
         pressed = null;
         scroller.classList.remove("panning");
@@ -159,6 +170,19 @@ export class Timeline {
   private onPlayhead(event: MouseEvent): boolean {
     if (this.playhead === null) return false;
     return Math.abs(this.x(this.playhead) - (this.scroller.scrollLeft + event.offsetX)) <= TL_GRAB;
+  }
+
+  /** La borne de la boucle sous le pointeur (la plus proche, à égalité de la ligne rouge elle l'emporte), ou null. */
+  private loopBoundAt(event: MouseEvent): "start" | "end" | null {
+    const x = this.scroller.scrollLeft + event.offsetX;
+    let best: "start" | "end" | null = null;
+    let distance = this.playhead === null ? TL_GRAB + 1 : Math.abs(this.x(this.playhead) - x) + 0.5;
+    for (const [bound, seconds] of [["start", this.loopStart], ["end", this.loopEnd]] as const) {
+      if (seconds === null) continue;
+      const d = Math.abs(this.x(seconds) - x);
+      if (d <= TL_GRAB && d < distance) [best, distance] = [bound, d];
+    }
+    return best;
   }
 
   /** Début (s) de l'accord dont le nom est sous le pointeur, en mode accord ; null ailleurs. */
@@ -327,7 +351,10 @@ export class Timeline {
       ctx.fillRect(this.x(this.loopStart), 0, this.x(this.loopEnd) - this.x(this.loopStart), TL_H);
     }
     for (const bound of [this.loopStart, this.loopEnd]) {
-      if (bound !== null) line(ctx, this.x(bound), 0, this.x(bound), TL_H, colors.note);
+      if (bound === null) continue;
+      line(ctx, this.x(bound), 0, this.x(bound), TL_H, colors.note, 2);
+      ctx.fillStyle = colors.note;
+      ctx.fillRect(this.x(bound) - 4, 0, 8, 8); // poignée : la borne se glisse à la souris
     }
 
     for (const used of [false, true]) {

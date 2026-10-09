@@ -125,7 +125,9 @@ deux notes sont trop proches, le nom, puis le numéro de case, sont omis pour ne
   diminué, amené dans la **Tonalité globale**. Une note qui sonne seule reçoit, comme dans
   l'application de bureau, l'accord que la gamme lui donne.
 - **Boucle** : **A** pose le début et **B** la fin à la position courante ; la lecture répète ce
-  passage. **Effacer** retire la boucle.
+  passage. Les deux bornes se glissent ensuite à la souris sur la frise ou sur la bande Simple Corde
+  (poignée en haut de chaque trait bleu), y compris en cours de lecture ; une borne ne dépasse pas
+  l'autre. **Effacer** retire la boucle.
 
 ### Accords écrits
 
