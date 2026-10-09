@@ -62,6 +62,10 @@ machine.
 - **Mélodie seule** est cochée au départ, contrairement à l'application de bureau.
 - **Accord adapté aux notes hors tonalité** : une note étrangère à la gamme reçoit un accord qui
   la contient, au lieu de l'accord de repli (La mineur).
+- **Lisser les accords** (cochée au départ) : parmi les accords lus dans le fichier, ceux de moins
+  de trois quarts de temps qui sont encadrés par le même accord, ou qui commencent entre deux temps,
+  disparaissent (accords de passage portés par la mélodie). Un changement bref sur un temps reste.
+  Les accords écrits dans le fichier ou choisis sur la frise ne sont pas touchés.
 - **Boucle** : **A** pose le début et **B** la fin à la position courante ; la lecture répète ce
   passage. **Effacer** retire la boucle.
 
@@ -98,6 +102,10 @@ calculé. Les accords écrits sont affichés dans la couleur d'accent.
 lignes `Text_t` d'accords mises à jour ; le reste du fichier est recopié tel quel. Un fichier MIDI
 ne s'enregistre pas ainsi : les accords choisis y sont perdus à la fermeture de la page.
 
+Le nom des pistes (lignes `Title_t`) est repris dans la liste des pistes. Les repères (lignes
+`Marker_t`, ou repères d'un fichier MIDI) marquent le début des parties du morceau sur la frise,
+par un trait et leur nom.
+
 ### Styles de strumming
 
 En mode **Accord 6 Cordes**, la liste **Style de strumming** remplace le découpage de chaque note
@@ -108,6 +116,7 @@ un silence de la mélodie, l'accord précédent continue. Un coup coupe le préc
 | Style | Motif d'une mesure à 4 temps (B = bas, H = haut, . = silence) | Cordes |
 |---|---|---|
 | Feu de camp | B . B H . H B H, premier temps accentué | toutes vers le bas, les 4 aiguës vers le haut |
+| Va-et-vient | B H B H B H B H, premier temps accentué, coups sans silence | toutes, vers le bas puis vers le haut |
 | Rock | B B B B B B B B, temps 2 et 4 accentués, notes courtes | les 3 graves |
 | Jazz | B . B . B . B h, temps 2 et 4 accentués, levée ternaire | les 4 graves, levée sur les 3 aiguës |
 | Reggae | . H . H . H . H, coups très courts | les 3 aiguës |
@@ -215,7 +224,7 @@ python tools/make_fixtures.py --local chemin/vers/morceau.mid
 | Réglages de départ | « Mélodie seule » décochée. | « Mélodie seule » et « Une seule note ou un seul accord à la fois » cochées. |
 | Fichier sans note | Remplacé par une note de secours. | Refusé avec un message. |
 | Boucle, volume, raccourcis clavier, réglages retenus | Absents. | Présents. |
-| Styles de strumming | Absents : N strums par note. | Feu de camp, rock, jazz, reggae, en plus du découpage par note. |
+| Styles de strumming | Absents : N strums par note. | Feu de camp, va-et-vient, rock, jazz, reggae, en plus du découpage par note. |
 
 Les autres limites connues de l'application de bureau sont conservées : export avec un seul jeu de
 réglages, fichiers de type 2 non pris en charge.

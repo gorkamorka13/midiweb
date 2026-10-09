@@ -52,6 +52,14 @@ export const STYLES: Record<string, StrumStyle> = {
     steps: [down(ACCENT, 1.8), null, down(NORMAL, 0.9), up(SOFT, 1.8), null, up(SOFT, 0.9), down(NORMAL, 0.9), up(SOFT, 0.9)],
     swing: 0,
   },
+  // Bas Haut en croches continues, sur les six cordes dans les deux sens : un va-et-vient régulier
+  allerRetour: {
+    label: "Va-et-vient",
+    steps: [0, 1, 2, 3, 4, 5, 6, 7].map((i) =>
+      i % 2 ? up(SOFT, 0.95, "all") : down(i === 0 ? ACCENT : NORMAL, 0.95),
+    ),
+    swing: 0,
+  },
   // Croches vers le bas sur les cordes graves, notes courtes, accents sur les temps 2 et 4
   rock: {
     label: "Rock",

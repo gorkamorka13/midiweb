@@ -12,6 +12,7 @@ import {
   INSTRUMENTS,
   MAX_STRUMS,
   MAX_TRANSPOSE,
+  OPEN_STRINGS,
   SCALES,
   SCALE_ROOTS,
   SEEK_STEP,
@@ -38,14 +39,17 @@ import {
   listParts,
   readMidiInput,
   setChord,
+  smoothChords,
+  strumLayout,
   uniformBeats,
   type ChordMark,
+  type Marker,
   type MidiInput,
   type Note,
   type Part,
 } from "./logic";
 import { MIDICSV_EXTENSIONS, writeMidicsvChords } from "./midicsv";
-import type { LiveParams } from "./player";
+import type { Display, LiveParams } from "./player";
 import { STYLES, type StrumStyle } from "./styles";
 import { refreshColors } from "./ui/canvas";
 import { drawChord } from "./ui/chord";
@@ -67,6 +71,7 @@ const lblTranspose = $("lbl-transpose");
 const chkMelody = $<HTMLInputElement>("chk-melody");
 const chkMono = $<HTMLInputElement>("chk-mono");
 const chkChromatic = $<HTMLInputElement>("chk-chromatic");
+const chkSmooth = $<HTMLInputElement>("chk-smooth");
 const cbInstrument = $<HTMLSelectElement>("cb-instrument");
 const cbStyle = $<HTMLSelectElement>("cb-style");
 const spinTempo = $<HTMLInputElement>("spin-tempo");
@@ -108,7 +113,9 @@ let frameId = 0;
 let transpose = 0;
 let songDuration = 0.0;
 let inputFileName: string | null = null;
-let computedNotes: Note[] = []; // toutes les notes du fichier, avec les accords calculés
+let harmonized: Note[] = []; // toutes les notes du fichier, avec les accords entendus, avant lissage
+let computedNotes: Note[] = []; // toutes les notes du fichier, avec les accords calculés (lissés ou non)
+let fileMarkers: Marker[] = []; // repères du fichier : le nom des parties du morceau
 let chordMarks: ChordMark[] = []; // accords écrits dans le fichier ou choisis sur la frise
 let chordsDirty = false; // accords modifiés depuis l'ouverture du fichier ou leur enregistrement
 let sourceText: string | null = null; // texte du fichier MIDICSV ouvert : les accords s'y enregistrent
@@ -294,7 +301,12 @@ function onNotationChange(): void {
   fillScales();
   fillFileKeys();
   onHarmonyChange();
-  if (!playback) drawChord(cvChord, null, null, notation()); // noms des cordes ; en lecture, `pollPlayer` redessine
+  // En lecture, `pollPlayer` redessine à chaque image ; à l'arrêt, `drawTimeline` a déjà remontré
+  // ce qui est affiché à la position choisie
+  if (playback) return;
+  if (!inputNotes || lblChord.textContent === "—") {
+    drawChord(cvChord, null, null, notation()); // noms des cordes
+  }
 }
 
 // --- Pistes ------------------------------------------------------------------
@@ -368,10 +380,31 @@ function drawTimeline(): void {
   });
   chordLabels = chords ? labels : [];
   // Les notes des pistes décochées restent dessinées, grisées
-  timeline.setModel({ notes: fileNotes, used: new Set(used), labels, chords, duration: songDuration });
+  timeline.setModel({
+    notes: fileNotes, used: new Set(used), labels, chords, duration: songDuration,
+    sections: fileMarkers.map((m) => ({ start: m.seconds, name: m.name })),
+  });
+  // À l'arrêt, ce qui est affiché à la position choisie suit le réglage qui vient de changer
+  if (!playback && lblChord.textContent !== "—") showCursorChord();
 }
 
 // --- Accords écrits ----------------------------------------------------------
+
+/** Un accord plus court que cette part de temps est un accord de passage, écarté par le lissage. */
+const SMOOTH_BEATS = 0.75;
+
+/** Accords calculés, lissés si la case est cochée. */
+function computeChords(): void {
+  computedNotes = chkSmooth.checked ? smoothChords(harmonized, fileBeats, (SMOOTH_BEATS * 60) / fileBpm) : harmonized;
+}
+
+/** Le lissage a été activé ou désactivé : la frise et la lecture en cours en tiennent compte. */
+function onSmoothChange(): void {
+  if (!inputNotes) return;
+  computeChords();
+  fileNotes = applyChords(computedNotes, chordMarks);
+  onTracksChange();
+}
 
 /** Les accords écrits ont changé : la frise et la lecture en cours les prennent tout de suite. */
 function setChordMarks(marks: ChordMark[]): void {
@@ -448,6 +481,32 @@ function updateNowPlaying(view: PlaybackView): void {
   drawChord(cvChord, d, view.lit, notation());
 }
 
+/**
+ * Ce qui sonnerait à `seconds` : l'accord de la dernière note commencée (rien avant la première,
+ * ni après la fin) ; en Simple Corde, la note seulement tant qu'elle dure. Sert à afficher la
+ * position choisie quand rien ne joue.
+ */
+function displayAt(seconds: number): Display | null {
+  if (!inputNotes) return null;
+  const p = readLiveParams();
+  let note: Note | null = null;
+  for (const n of p.melody ? keepHighestNotes(inputNotes) : inputNotes) {
+    if (n.start > seconds) continue;
+    if (!note || n.start > note.start || (n.start === note.start && n.pitch > note.pitch)) note = n;
+  }
+  if (!note || seconds >= songDuration) return null;
+  if (p.mode === "corde" && seconds >= note.start + note.duration) return null;
+  const [chord, layout] = strumLayout(note, p.mode, harmonyMap(p.scale, p.chromatic), p.transpose, p.keyShift);
+  const frets: (number | null)[] = OPEN_STRINGS.map(() => null);
+  for (const [string, fret] of layout) frets[string] = fret;
+  return { mode: p.mode, chord, frets, up: false, transpose: p.transpose, pitch: layout[0][2] };
+}
+
+/** À l'arrêt : montre ce qui sonnerait à la position choisie, avec les réglages en cours. */
+function showCursorChord(): void {
+  updateNowPlaying({ position: cursor, display: displayAt(cursor), lit: [], finished: false });
+}
+
 function clearNowPlaying(lit: boolean[] | null = null): void {
   lblChord.textContent = "—";
   lblChordSub.textContent = "\n";
@@ -473,6 +532,7 @@ function seekTo(seconds: number, follow = true): void {
   } else if (inputNotes) {
     cursor = Math.min(songDuration, Math.max(0.0, seconds));
     showCursor(follow);
+    showCursorChord();
   }
 }
 
@@ -578,8 +638,12 @@ async function loadFile(file: File): Promise<void> {
   }
   inputFileName = file.name;
   // Les accords sont lus dans toutes les pistes, cochées ou non ; ceux qui sont écrits l'emportent
-  computedNotes = harmonize(input.notes);
+  harmonized = harmonize(input.notes);
+  fileBpm = input.bpm;
+  fileBeats = input.beats;
+  computeChords();
   chordMarks = input.chords;
+  fileMarkers = input.markers;
   chordsDirty = false;
   sourceText = text;
   fileNotes = applyChords(computedNotes, chordMarks);
@@ -590,8 +654,6 @@ async function loadFile(file: File): Promise<void> {
   // La tonalité est cherchée dans tout le fichier : elle ne change pas avec les pistes cochées
   detectedKey = detectKey(fileNotes);
   songDuration = Math.max(...fileNotes.map((n) => n.start + n.duration));
-  fileBeats = input.beats;
-  fileBpm = input.bpm;
   beatsPerBar = input.beatsPerBar;
   lblFile.textContent = file.name;
   lblFile.classList.remove("muted");
@@ -619,8 +681,10 @@ function openFile(): void {
 /** Fichier illisible ou vide : on ne garde pas les notes du fichier précédent. */
 function closeFile(): void {
   inputFileName = null;
+  harmonized = [];
   computedNotes = [];
   chordMarks = [];
+  fileMarkers = [];
   chordsDirty = false;
   sourceText = null;
   fileNotes = [];
@@ -741,7 +805,10 @@ function pollPlayer(): void {
   // En pause, la frise ne suit la tête de lecture que si elle bouge : on peut la parcourir librement
   if (!playback.paused || view.position !== shownPosition) timeline.movePlayhead(view.position);
   shownPosition = view.position;
-  updateNowPlaying(view);
+  // En pause, on montre ce qui sonnerait à cet endroit avec les réglages en cours : rien n'est
+  // frappé après un déplacement, et la dernière frappe ne suit pas un changement de transposition
+  const here = playback.paused ? displayAt(view.position) : null;
+  updateNowPlaying(here ? { ...view, display: { ...here, up: view.display?.up ?? false } } : view);
   frameId = requestAnimationFrame(pollPlayer);
 }
 
@@ -833,6 +900,7 @@ function readSettings(): Record<string, unknown> {
     melody: melodySaved ?? chkMelody.checked, // en Simple Corde, la case est cochée d'office
     mono: chkMono.checked,
     chromatic: chkChromatic.checked,
+    smooth: chkSmooth.checked,
     notation: notation(),
     instrument: cbInstrument.value,
     style: cbStyle.value,
@@ -879,6 +947,7 @@ function applySettings(saved: Record<string, unknown>): void {
   check(chkMelody, saved.melody);
   check(chkMono, saved.mono);
   check(chkChromatic, saved.chromatic);
+  check(chkSmooth, saved.smooth);
   if (typeof saved.instrument === "string" && saved.instrument in INSTRUMENTS) cbInstrument.value = saved.instrument;
   // "" : le style « Classique », qui n'est pas dans STYLES
   if (typeof saved.style === "string" && (saved.style === "" || saved.style in STYLES)) cbStyle.value = saved.style;
@@ -925,6 +994,7 @@ async function resetSettings(): Promise<void> {
   setTheme("system");
   showSliders();
   audio?.setVolume(volume());
+  onSmoothChange();
   onModeChange();
   onNotationChange();
 }
@@ -989,6 +1059,7 @@ function setupUi(): void {
   cbFileKey.addEventListener("change", onHarmonyChange);
   cbStyle.addEventListener("change", updateStyleControls);
   chkChromatic.addEventListener("change", drawTimeline);
+  chkSmooth.addEventListener("change", onSmoothChange);
   tracksList.addEventListener("change", () => {
     enabledParts = new Set([...tracksList.querySelectorAll("input")].filter((b) => b.checked).map((b) => b.value));
     onTracksChange();

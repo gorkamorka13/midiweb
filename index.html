@@ -86,7 +86,10 @@
       </button>
       <div class="brand">
         <svg class="logo" aria-hidden="true"><use href="#i-logo" /></svg>
-        <h1>Guitar MIDI Strummer</h1>
+        <div class="brand-text">
+          <h1>Guitar MIDI Strummer</h1>
+          <span class="brand-credit muted" id="lbl-credit"></span>
+        </div>
       </div>
       <span id="lbl-file" class="file-name muted">Aucun fichier sélectionné</span>
       <button id="btn-browse" type="button" class="bar-action">
@@ -235,6 +238,11 @@
           <label class="check">
             <input id="chk-chromatic" type="checkbox" />
             <span>Accord adapté aux notes hors tonalité <small>Sinon, l'accord de repli</small></span>
+          </label>
+
+          <label class="check">
+            <input id="chk-smooth" type="checkbox" checked />
+            <span>Lisser les accords <small>Ignore les accords de passage de moins d'un temps</small></span>
           </label>
 
           <div class="field">
@@ -449,6 +457,7 @@
         Rejoue un fichier MIDI à la guitare, note par note ou en accords, et l'exporte en MIDI. Version
         <span id="about-version"></span>.
       </p>
+      <p>Créé par Michel ESPARSA. <span id="about-build"></span></p>
       <p>
         Code source :
         <a href="https://github.com/gorkamorka13/midiweb" target="_blank" rel="noopener">github.com/gorkamorka13/midiweb</a>

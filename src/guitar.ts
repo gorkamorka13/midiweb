@@ -79,6 +79,24 @@ export const CHORD_VOICINGS: Record<string, number[]> = Object.fromEntries(
   ]),
 );
 
+/** Barré de l'index : sur la case `fret`, des cordes `from` à `to` (0 = Mi grave). */
+export type Barre = { fret: number; from: number; to: number };
+
+/**
+ * Barré d'un doigté, ou null s'il n'en faut pas : au-delà de 4 notes pressées, l'index doit en
+ * couvrir plusieurs. Il s'étend de la première à la dernière corde posée sur la case la plus
+ * basse ; une corde à vide dans cette étendue (Sol : 320003) l'empêcherait.
+ */
+export function findBarre(frets: readonly (number | null)[]): Barre | null {
+  const pressed = frets.filter((f): f is number => !!f);
+  if (pressed.length <= 4) return null;
+  const fret = Math.min(...pressed);
+  const from = frets.indexOf(fret);
+  const to = frets.lastIndexOf(fret);
+  if (from === to || frets.slice(from, to + 1).some((f) => f === 0)) return null;
+  return { fret, from, to };
+}
+
 // Tessiture utilisée en mode simple corde : Mi grave à vide -> 12e case de la chanterelle
 export const GUITAR_LOW = 40;
 export const GUITAR_HIGH = 76;

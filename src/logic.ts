@@ -64,6 +64,14 @@ export interface MidiInput {
   bpm: number;
   /** Accords écrits dans le fichier, dans l'ordre du temps. */
   chords: ChordMark[];
+  /** Repères du fichier (nom des parties du morceau), dans l'ordre du temps. */
+  markers: Marker[];
+}
+
+/** Repère écrit dans le fichier : le début d'une partie du morceau (« Refrain », « Kyrie »). */
+export interface Marker {
+  seconds: number;
+  name: string;
 }
 
 /** Les notes et les noms de piste suffisent à décrire les parties d'un morceau. */
@@ -99,6 +107,7 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
   type Begun = { pitch: number; start: number; velocity: number; track: number; channel: number; tick: number };
   const active = new Map<string, Begun>(); // canal:note -> début
   const chords: ChordMark[] = [];
+  const markers: Marker[] = [];
   let now = 0.0;
   // Tempos successifs (microsecondes par noire), chacun avec sa position en ticks et en secondes
   const tempos = [{ tick: 0, seconds: 0.0, tempo: DEFAULT_TEMPO }];
@@ -118,6 +127,7 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
         chords.push({ tick, seconds: now, chord });
       }
     }
+    if (event.kind === "marker" && event.text.trim()) markers.push({ seconds: now, name: event.text.trim() });
     if (event.kind !== "noteOn" && event.kind !== "noteOff") continue;
     if (event.channel === 9) continue; // canal 10 = percussions : pas des hauteurs de note
     const key = `${event.channel}:${event.note}`;
@@ -161,7 +171,7 @@ export function readMidiInput(fileName: string, bytes: Uint8Array): MidiInput {
   // Tempo de la première note : celui de la dernière valeur lue avant elle
   const first = notes.length ? notes[0].start : 0;
   const tempo = tempos.filter((t) => t.seconds <= first + 1e-9).pop()!.tempo;
-  return { notes, trackNames, beats, beatsPerBar: beatsPerBar ?? 4, bpm: 60e6 / tempo, chords };
+  return { notes, trackNames, beats, beatsPerBar: beatsPerBar ?? 4, bpm: 60e6 / tempo, chords, markers };
 }
 
 /**
@@ -333,6 +343,64 @@ export function harmonize(notes: Note[], tolerance = 0.03): Note[] {
   return notes.map((note) => {
     const chord = chords.get(note);
     return chord ? { ...note, chord } : { ...note };
+  });
+}
+
+/**
+ * Lisse les accords calculés : un accord de passage, porté par une note de mélodie, disparaît. C'est
+ * un accord qui dure moins de `minLength` secondes et qui, soit est encadré par deux fois le même
+ * accord, soit commence entre deux temps (alors le précédent continue). Un changement bref sur un
+ * temps reste. Les notes sans accord (qui sonnent seules) et le dernier accord ne sont pas touchés.
+ *
+ * @param beats temps du morceau, en secondes
+ */
+export function smoothChords(notes: Note[], beats: readonly number[], minLength: number): Note[] {
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  interface Run {
+    chord: ChordRef | null;
+    start: number;
+    members: Note[];
+  }
+  const same = (a: ChordRef | null, b: ChordRef | null) => a?.[0] === b?.[0] && a?.[1] === b?.[1];
+  const merge = (list: Run[]) => {
+    const merged: Run[] = [];
+    for (const run of list) {
+      const last = merged[merged.length - 1];
+      if (last && same(last.chord, run.chord)) last.members.push(...run.members);
+      else merged.push(run);
+    }
+    return merged;
+  };
+  /** Le temps le plus proche est à plus de 20 % de `minLength` : l'instant tombe entre deux temps. */
+  const offBeat = (time: number) => {
+    let low = 0;
+    let high = beats.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (beats[mid] < time) low = mid + 1;
+      else high = mid;
+    }
+    const gap = Math.min(time - (beats[low - 1] ?? -Infinity), (beats[low] ?? Infinity) - time);
+    return beats.length > 0 && gap > 0.2 * minLength;
+  };
+
+  let runs = merge(sorted.map((note) => ({ chord: note.chord ?? null, start: note.start, members: [note] })));
+  for (;;) {
+    const pick = runs.findIndex((run, i) => {
+      const [before, after] = [runs[i - 1], runs[i + 1]];
+      if (!run.chord || !before?.chord || !after || after.start - run.start >= minLength) return false;
+      return (after.chord && same(before.chord, after.chord)) || offBeat(run.start);
+    });
+    if (pick < 0) break;
+    runs[pick].chord = runs[pick - 1].chord;
+    runs = merge(runs);
+  }
+
+  const chords = new Map<Note, ChordRef | null>();
+  for (const run of runs) for (const note of run.members) chords.set(note, run.chord);
+  return notes.map((note) => {
+    const chord = chords.get(note);
+    return chord ? { ...note, chord } : note;
   });
 }
 

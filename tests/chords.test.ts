@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { chordOf, parseChord } from "../src/guitar";
-import { applyChords, harmonize, readMidiInput, setChord, type ChordMark, type Note } from "../src/logic";
+import { applyChords, harmonize, listParts, readMidiInput, setChord, smoothChords, type ChordMark, type Note } from "../src/logic";
 import { writeMidicsvChords } from "../src/midicsv";
 import { writeMidi } from "../src/midifile";
 
@@ -85,6 +85,45 @@ describe("accords écrits", () => {
       [0, ""], [0, ""], [9, "m"], [9, "m"], [0, ""], [0, ""], undefined,
     ]);
     expect(applyChords(notes, [marks[0]]).map((n) => n.chord).slice(4)).toEqual([[9, "m"], [9, "m"], [9, "m"]]);
+  });
+
+  it("lit le nom des pistes (Title_t) et les repères (Marker_t) d'un MIDICSV", () => {
+    const input = read([
+      "0, 0, Header, 1, 2, 480",
+      "1, 0, Start_track",
+      '1, 0, Title_t, "Messe"',
+      "1, 0, Tempo, 500000",
+      '1, 0, Marker_t, "Kyrie"',
+      '1, 960, Marker_t, "Gloria"',
+      "1, 1920, End_track",
+      "2, 0, Start_track",
+      '2, 0, Title_t, "Soprano"',
+      "2, 0, Note_on_c, 0, 60, 90",
+      "2, 1920, Note_off_c, 0, 60, 0",
+      "2, 1920, End_track",
+    ].join("\n"));
+    expect(listParts(input)).toEqual([{ track: 1, channel: 0, name: "Soprano", count: 1 }]);
+    expect(input.markers).toEqual([{ seconds: 0, name: "Kyrie" }, { seconds: 1, name: "Gloria" }]);
+  });
+
+  it("lisse les accords de passage : encadrés par le même accord, ou entre deux temps", () => {
+    const at = (start: number, chord: [number, string] | undefined): Note => ({
+      pitch: 60, start, duration: 1, velocity: 90, track: 0, channel: 0, chord,
+    });
+    const DO: [number, string] = [0, ""];
+    const SOL: [number, string] = [7, "m"];
+    const FA: [number, string] = [5, "m"];
+    const SIB: [number, string] = [10, ""];
+    const chords = (notes: Note[]) => notes.map((n) => n.chord);
+    const beats = [0, 1, 2, 3, 4, 5, 6, 7];
+    const smooth = (notes: Note[]) => chords(smoothChords(notes, beats, 0.75));
+
+    // Un Sol mineur d'une demi-seconde sur un temps, entre deux Do : il rejoint Do
+    expect(smooth([at(0, DO), at(2, DO), at(3, SOL), at(3.5, DO), at(5, DO)])).toEqual([DO, DO, DO, DO, DO]);
+    // Un Fa mineur bref entre deux temps, suivi d'un autre accord : le précédent continue
+    expect(smooth([at(0, DO), at(1.5, FA), at(2, SIB), at(4, SIB)])).toEqual([DO, DO, SIB, SIB]);
+    // Un accord bref sur un temps (Sol mineur) reste, comme une note sans accord et le dernier accord
+    expect(smooth([at(0, DO), at(1, SOL), at(1.5, FA), at(3, undefined), at(4, SIB)])).toEqual([DO, SOL, FA, undefined, SIB]);
   });
 
   it("change l'accord d'un passage sans toucher au suivant", () => {

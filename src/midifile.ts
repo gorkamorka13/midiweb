@@ -7,6 +7,7 @@ export type MidiEvent =
   | { delta: number; kind: "tempo"; tempo: number }
   | { delta: number; kind: "trackName"; name: string }
   | { delta: number; kind: "text"; text: string }
+  | { delta: number; kind: "marker"; text: string }
   | { delta: number; kind: "timeSignature"; numerator: number; denominator: number }
   | { delta: number; kind: "endOfTrack" | "other" };
 
@@ -122,6 +123,8 @@ function readTrack(reader: Reader): MidiEvent[] {
         track.push({ delta, kind: "trackName", name: data.map((c) => String.fromCharCode(c)).join("") });
       } else if (metaType === 0x01) {
         track.push({ delta, kind: "text", text: decodeText(data) });
+      } else if (metaType === 0x06) {
+        track.push({ delta, kind: "marker", text: decodeText(data) });
       } else if (metaType === 0x58 && data.length >= 2) {
         track.push({ delta, kind: "timeSignature", numerator: data[0], denominator: 2 ** data[1] });
       } else {

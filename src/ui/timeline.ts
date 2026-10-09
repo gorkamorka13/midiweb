@@ -1,11 +1,12 @@
 import type { Note } from "../logic";
-import { FONT_NAME, FONT_SMALL, colors, line, prepare, text } from "./canvas";
+import { FONT_NAME, FONT_SMALL, FONT_SMALL_BOLD, colors, line, prepare, text } from "./canvas";
 
 const TL_H = 190;
 const TL_TOP = 42; // sous les noms
 const TL_NAME_Y = 20; // milieu de la ligne des noms
 const TL_NAME_TOP = TL_NAME_Y - 14; // hauteur sur laquelle un nom se clique
 const TL_NAME_BOTTOM = TL_NAME_Y + 14;
+const TL_SECTION_Y = 37; // nom des parties du morceau, entre les noms et les notes
 const TL_BOTTOM = TL_H - 22; // au-dessus de l'axe du temps
 const TL_PAD = 10;
 const TL_MAX_SCALE = 400; // pixels par seconde au plus : au-delà, les noms trop serrés sont omis
@@ -26,6 +27,8 @@ export interface TimelineModel {
   /** Mode accord : un nom n'est écrit que s'il diffère du précédent. */
   chords: boolean;
   duration: number;
+  /** Parties du morceau (repères du fichier) : un trait et un nom à leur début. */
+  sections: { start: number; name: string }[];
 }
 
 /**
@@ -49,6 +52,7 @@ export class Timeline {
   private barHeight = 2;
   private names: { x: number; name: string; start: number; written: boolean }[] = [];
   private marks: { x: number; label: string }[] = [];
+  private sections: { x: number; name: string }[] = [];
   private axisEnd = 0;
   private measure = document.createElement("canvas").getContext("2d")!;
   private widths = new Map<string, number>();
@@ -114,7 +118,7 @@ export class Timeline {
       (event) => {
         if (this.width <= this.viewWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
         event.preventDefault();
-        scroller.scrollLeft += Math.sign(event.deltaY) * (this.viewWidth / 10);
+        scroller.scrollLeft += Math.sign(event.deltaY) * (this.viewWidth / 25);
       },
       { passive: false },
     );
@@ -197,11 +201,19 @@ export class Timeline {
    * `movePlayhead`). L'instant affiché au bord gauche est conservé.
    */
   private layout(): void {
-    const leftTime = Math.max(0, this.scroller.scrollLeft) / this.scale;
+    // Le zoom dépend des noms affichés (donc des pistes jouées) : on garde en place la tête de lecture
+    // si elle est visible, sinon l'instant du bord gauche
+    const left = Math.max(0, this.scroller.scrollLeft);
+    const seen = this.playhead !== null ? this.x(this.playhead) - left : -1;
+    const anchor =
+      seen >= 0 && seen <= this.scroller.clientWidth
+        ? { time: this.playhead!, offset: seen }
+        : { time: Math.max(0, (left - TL_PAD) / this.scale), offset: 0 };
     this.viewWidth = this.scroller.clientWidth;
     this.bars = [];
     this.names = [];
     this.marks = [];
+    this.sections = [];
     const model = this.model;
     if (!model) {
       this.scale = 1.0;
@@ -251,6 +263,8 @@ export class Timeline {
       last = name;
     }
 
+    this.sections = model.sections.map(({ start, name }) => ({ x: this.x(start), name }));
+
     // Axe du temps
     this.axisEnd = this.width - TL_PAD;
     const step = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600].find((s) => s * this.scale >= 80) ?? 1200;
@@ -263,7 +277,7 @@ export class Timeline {
 
     this.width = Math.max(this.width, nextFree); // le dernier nom peut dépasser la fin du morceau
     this.spacer.style.width = `${this.width}px`;
-    this.scroller.scrollLeft = leftTime * this.scale;
+    this.scroller.scrollLeft = Math.max(0, this.x(anchor.time) - anchor.offset);
     this.render();
   }
 
@@ -295,6 +309,12 @@ export class Timeline {
         if (b.x1 > right) break;
         if (b.used === used && b.x2 >= left) ctx.fillRect(b.x1, b.y, b.x2 - b.x1, this.barHeight);
       }
+    }
+
+    for (const { x, name } of this.sections) {
+      if (x > right) break;
+      line(ctx, x, TL_SECTION_Y - 6, x, bottom, colors.grid);
+      text(ctx, x + 4, TL_SECTION_Y, name, colors.muted, FONT_SMALL_BOLD, "left");
     }
 
     // Un accord écrit se distingue d'un accord calculé par sa couleur

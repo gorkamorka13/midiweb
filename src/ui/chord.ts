@@ -1,4 +1,4 @@
-import { OPEN_STRINGS, noteName, type Notation } from "../guitar";
+import { OPEN_STRINGS, findBarre, noteName, type Notation } from "../guitar";
 import type { Display } from "../player";
 import { FONT_MARK, FONT_SMALL, FONT_SMALL_BOLD, colors, line, prepare, text } from "./canvas";
 
@@ -26,6 +26,16 @@ export function drawChord(
   }
   if (base > 1) text(ctx, x0 - 10, y0 + dy / 2, `${base}fr`, colors.muted, FONT_SMALL, "right");
 
+  // Le barré remplace les ronds des cordes qu'il couvre ; une corde frappée garde son rond accentué
+  const barre = display?.mode === "accord" ? findBarre(frets) : null;
+  if (barre && barre.fret - base >= 0 && barre.fret - base < CD_FRETS) {
+    const y = y0 + (barre.fret - base + 0.5) * dy;
+    ctx.fillStyle = colors.text;
+    ctx.beginPath();
+    ctx.roundRect(x0 + barre.from * dx - 9, y - 9, (barre.to - barre.from) * dx + 18, 18, 9);
+    ctx.fill();
+  }
+
   const single = !!display && display.mode !== "accord";
   frets.forEach((fret, s) => {
     const x = x0 + s * dx;
@@ -43,6 +53,7 @@ export function drawChord(
       ctx.arc(x, y0 - 14, 5, 0, 2 * Math.PI);
       ctx.stroke();
     } else if (fret - base >= 0 && fret - base < CD_FRETS) {
+      if (barre && fret === barre.fret && s >= barre.from && s <= barre.to && !hit) return;
       const y = y0 + (fret - base + 0.5) * dy;
       ctx.fillStyle = hit ? colors.accent : colors.text;
       ctx.beginPath();

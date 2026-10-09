@@ -68,8 +68,9 @@ function inRange(value: number, low: number, high: number): number {
  * Reconstruit un fichier MIDI à partir d'un texte MIDICSV (le texte produit par l'outil midicsv).
  *
  * Chaque ligne donne : piste, temps absolu en ticks, type, paramètres. Seuls l'en-tête, les
- * tempos, les chiffrages de mesure, les textes (Text_t, où sont écrits les accords) et les notes
- * sont repris ; les lignes vides et les commentaires (# ou ;) sont ignorés.
+ * tempos, les chiffrages de mesure, les noms de piste (Title_t), les repères (Marker_t, le nom des
+ * parties du morceau), les textes (Text_t, où sont écrits les accords) et les notes sont repris ;
+ * les lignes vides et les commentaires (# ou ;) sont ignorés.
  */
 export function readMidicsv(text: string): MidiData {
   let fileType: number | null = null;
@@ -100,6 +101,10 @@ export function readMidicsv(text: string): MidiData {
         add(track, tick, { delta: 0, kind: "timeSignature", numerator, denominator: 2 ** power });
       } else if (kind === "text_t") {
         add(track, tick, { delta: 0, kind: "text", text: row[3] ?? "" });
+      } else if (kind === "title_t") {
+        add(track, tick, { delta: 0, kind: "trackName", name: row[3] ?? "" });
+      } else if (kind === "marker_t") {
+        add(track, tick, { delta: 0, kind: "marker", text: row[3] ?? "" });
       } else if (kind === "note_on_c" || kind === "note_off_c") {
         add(track, tick, {
           delta: 0,

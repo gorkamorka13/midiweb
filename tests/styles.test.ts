@@ -136,6 +136,14 @@ describe("lecture avec un style", () => {
     expect(strokes()[0][2]).toBeGreaterThan(strokes()[1][2]); // premier temps accentué
   });
 
+  it("joue le va-et-vient en croches, six cordes vers le bas puis vers le haut", () => {
+    const { run, strokes } = setup(song.notes, { style: STYLES.allerRetour });
+    run(1.0);
+    expect(times(strokes())).toEqual([0, 0.3, 0.6, 0.9]);
+    expect(strokes().map(([, pitches]) => pitches)).toEqual([DO, [...DO].reverse(), DO, [...DO].reverse()]);
+    expect(strokes()[0][2]).toBeGreaterThan(strokes()[2][2]); // premier temps accentué
+  });
+
   it("ne fait sonner qu'un accord à la fois", () => {
     const { player, sounding, run } = setup(song.notes);
     for (let i = 0; i < 200; i++) {

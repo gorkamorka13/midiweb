@@ -138,7 +138,10 @@ export function setupShell(handlers: ShellHandlers): void {
     items[(next + items.length) % items.length].focus();
   });
 
+  const build = `compilé le ${BUILD_DATE}`;
   byId("about-version").textContent = version;
+  byId("about-build").textContent = `Version ${version}, ${build}.`;
+  byId("lbl-credit").textContent = `Michel ESPARSA | v${version} | ${BUILD_DATE}`;
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", showTheme);
   showTheme();
 }

@@ -287,6 +287,18 @@ input[type="checkbox"] {
   white-space: nowrap;
 }
 
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brand-credit {
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .file-name {
   flex: 1;
   min-width: 0;
@@ -939,6 +951,7 @@ kbd {
   }
 
   .brand h1,
+  .brand-credit,
   .seek .label,
   .pause .label {
     position: absolute;
