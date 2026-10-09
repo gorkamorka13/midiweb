@@ -11,6 +11,7 @@
   --text: #1b2028;
   --muted: #5d6673;
   --accent: #e8590c;
+  --edited: #7c3aed;
   --primary: #c2410c;
   --on-primary: #ffffff;
   --note: #3b6fb6;
@@ -46,6 +47,7 @@
     --text: #e6e9ee;
     --muted: #9aa4b2;
     --accent: #ff8a3d;
+    --edited: #b794f6;
     --primary: #ff8a3d;
     --on-primary: #1d1206;
     --note: #6ea3ea;
@@ -68,6 +70,7 @@
   --text: #e6e9ee;
   --muted: #9aa4b2;
   --accent: #ff8a3d;
+  --edited: #b794f6;
   --primary: #ff8a3d;
   --on-primary: #1d1206;
   --note: #6ea3ea;
@@ -705,6 +708,11 @@ body.dropping .stage {
   align-items: baseline;
   justify-content: space-between;
   gap: 4px 12px;
+}
+
+.chord-history {
+  display: flex;
+  gap: 6px;
 }
 
 .tl-scroll {

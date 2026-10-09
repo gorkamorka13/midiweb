@@ -50,6 +50,8 @@ export interface ChordMark {
   tick: number;
   seconds: number;
   chord: ChordRef | null;
+  /** Choisi sur la frise, et non écrit dans le fichier. */
+  edited?: boolean;
 }
 
 /** Ce qui est lu dans un fichier : ses notes (aucune si le fichier n'en contient pas) et le nom de ses pistes. */
@@ -439,10 +441,10 @@ export function setChord(
   chord: ChordRef | null,
 ): ChordMark[] {
   const next = marks.filter((m) => m.tick < from.tick || (to !== null && m.tick >= to.tick));
-  next.push({ tick: from.tick, seconds: from.seconds, chord });
+  next.push(chord ? { tick: from.tick, seconds: from.seconds, chord, edited: true } : { tick: from.tick, seconds: from.seconds, chord });
   if (to !== null && !next.some((m) => m.tick === to.tick)) {
     const before = marks.filter((m) => m.tick < to.tick).pop();
-    next.push({ tick: to.tick, seconds: to.seconds, chord: before?.chord ?? null });
+    next.push({ tick: to.tick, seconds: to.seconds, chord: before?.chord ?? null, ...(before?.edited && { edited: true }) });
   }
   next.sort((a, b) => a.tick - b.tick);
   let current: ChordRef | null = null;

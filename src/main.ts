@@ -78,6 +78,8 @@ const chkChromatic = $<HTMLInputElement>("chk-chromatic");
 const chkSmooth = $<HTMLInputElement>("chk-smooth");
 const chkShapes = $<HTMLInputElement>("chk-shapes");
 const btnCapoAuto = $<HTMLButtonElement>("btn-capo-auto");
+const btnChordUndo = $<HTMLButtonElement>("btn-chord-undo");
+const btnChordRedo = $<HTMLButtonElement>("btn-chord-redo");
 const chkHorizontal = $<HTMLInputElement>("chk-horizontal");
 const chkNut = $<HTMLInputElement>("chk-nut");
 const chkMetronome = $<HTMLInputElement>("chk-metronome");
@@ -129,6 +131,12 @@ let harmonized: Note[] = []; // toutes les notes du fichier, avec les accords en
 let computedNotes: Note[] = []; // toutes les notes du fichier, avec les accords calculés (lissés ou non)
 let fileMarkers: Marker[] = []; // repères du fichier : le nom des parties du morceau
 let chordMarks: ChordMark[] = []; // accords écrits dans le fichier ou choisis sur la frise
+interface ChordState {
+  marks: ChordMark[];
+  dirty: boolean;
+}
+const chordUndo: ChordState[] = []; // états des accords avant chaque choix sur la frise
+const chordRedo: ChordState[] = []; // choix annulés, qu'on peut rétablir
 let chordsDirty = false; // accords modifiés depuis l'ouverture du fichier ou leur enregistrement
 let sourceText: string | null = null; // texte du fichier MIDICSV ouvert : les accords s'y enregistrent
 let fileNotes: Note[] = []; // toutes les notes du fichier, accords écrits compris
@@ -419,7 +427,8 @@ function drawTimeline(): void {
       : noteName(pitch + shownTranspose(), notation());
     while (mark < chordMarks.length && chordMarks[mark].seconds <= n.start + 1e-9) mark++;
     const written = chords && mark > 0 && chordMarks[mark - 1].chord !== null;
-    return { start: n.start, name, written, chord: chord ?? "", tick: n.tick };
+    const edited = written && chordMarks[mark - 1].edited === true;
+    return { start: n.start, name, written, edited, chord: chord ?? "", tick: n.tick };
   });
   chordLabels = chords ? labels : [];
   timeline.setTab(tabNotes(inputNotes, harmony, shift), notation(), shownTranspose());
@@ -451,11 +460,40 @@ function onSmoothChange(): void {
 }
 
 /** Les accords écrits ont changé : la frise et la lecture en cours les prennent tout de suite. */
-function setChordMarks(marks: ChordMark[]): void {
+function applyChordMarks(marks: ChordMark[], dirty: boolean): void {
   chordMarks = marks;
-  chordsDirty = true;
+  chordsDirty = dirty;
   fileNotes = applyChords(computedNotes, chordMarks);
   onTracksChange();
+  updateUndoButtons();
+}
+
+/** Un accord vient d'être choisi sur la frise : l'état d'avant est gardé pour pouvoir y revenir. */
+function setChordMarks(marks: ChordMark[]): void {
+  chordUndo.push({ marks: chordMarks, dirty: chordsDirty });
+  chordRedo.length = 0;
+  applyChordMarks(marks, true);
+}
+
+/** Annule le dernier choix d'accord sur la frise (`redo` : le rétablit). */
+function undoChord(redo = false): void {
+  const [from, to] = redo ? [chordRedo, chordUndo] : [chordUndo, chordRedo];
+  const state = from.pop();
+  if (!state) return;
+  to.push({ marks: chordMarks, dirty: chordsDirty });
+  applyChordMarks(state.marks, state.dirty);
+}
+
+function updateUndoButtons(): void {
+  btnChordUndo.disabled = chordUndo.length === 0;
+  btnChordRedo.disabled = chordRedo.length === 0;
+}
+
+/** Un autre fichier (ou aucun) : l'historique des accords choisis ne vaut plus. */
+function clearChordHistory(): void {
+  chordUndo.length = 0;
+  chordRedo.length = 0;
+  updateUndoButtons();
 }
 
 /**
@@ -723,6 +761,7 @@ async function loadFile(file: File): Promise<void> {
   chordMarks = input.chords;
   fileMarkers = input.markers;
   chordsDirty = false;
+  clearChordHistory();
   sourceText = text;
   fileNotes = applyChords(computedNotes, chordMarks);
   parts = listParts(input);
@@ -765,6 +804,7 @@ function closeFile(): void {
   chordMarks = [];
   fileMarkers = [];
   chordsDirty = false;
+  clearChordHistory();
   sourceText = null;
   fileNotes = [];
   parts = [];
@@ -966,6 +1006,8 @@ function saveCsv(): void {
   const text = writeMidicsvChords(sourceText, chordMarks, ([root, suffix]) => noteName(root, notation()) + suffix);
   download(new Blob([text], { type: "text/csv" }), inputFileName);
   chordsDirty = false;
+  // Enregistré, l'état courant est propre ; tous les autres états diffèrent du fichier enregistré
+  for (const state of [...chordUndo, ...chordRedo]) state.dirty = true;
   if (!playback && !starting) lblStatus.textContent = fileStatus();
   showMessage("Succès", `Accords enregistrés dans le fichier :\n${inputFileName}`);
 }
@@ -1111,8 +1153,17 @@ const KEEPS_SPACE = 'input[type="checkbox"], input[type="radio"], select, summar
 
 /** Espace : écouter, puis pause et reprise. Flèches : reculer et avancer. Début : retour au début. */
 function onKeyDown(event: KeyboardEvent): void {
-  if (event.ctrlKey || event.altKey || event.metaKey || shellBusy()) return;
   const target = event.target instanceof HTMLElement ? event.target : null;
+  // Ctrl+Z annule le dernier accord choisi sur la frise, Ctrl+Y (ou Ctrl+Maj+Z) le rétablit
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !shellBusy() && !target?.closest("input, select, textarea")) {
+    const key = event.key.toLowerCase();
+    if (key === "z" || key === "y") {
+      event.preventDefault();
+      undoChord(key === "y" || event.shiftKey);
+    }
+    return;
+  }
+  if (event.ctrlKey || event.altKey || event.metaKey || shellBusy()) return;
   if (event.key === " ") {
     if (target?.closest(KEEPS_SPACE)) return;
     event.preventDefault(); // ni défilement de la page, ni clic sur le bouton qui a le focus
@@ -1165,6 +1216,8 @@ function setupUi(): void {
   chkChromatic.addEventListener("change", drawTimeline);
   chkShapes.addEventListener("change", onHarmonyChange);
   btnCapoAuto.addEventListener("click", applyAutoCapo);
+  btnChordUndo.addEventListener("click", () => undoChord());
+  btnChordRedo.addEventListener("click", () => undoChord(true));
   chkSmooth.addEventListener("change", onSmoothChange);
   for (const chk of [chkHorizontal, chkNut]) {
     chk.addEventListener("change", () => {

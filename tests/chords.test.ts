@@ -147,6 +147,18 @@ describe("accords écrits", () => {
     expect(summary(setChord(many, at(480), at(960), [0, ""]))).toEqual([[0, [0, ""]], [960, [5, ""]]]);
   });
 
+  it("marque comme choisis sur la frise les accords posés par setChord, pas ceux du fichier", () => {
+    const at = (tick: number) => ({ tick, seconds: tick / 960 });
+    const fromFile: ChordMark[] = [{ ...at(0), chord: [9, "m"] }, { ...at(960), chord: [5, ""] }];
+    const marks = setChord(fromFile, at(480), at(960), [0, ""]);
+    expect(marks.map((m) => [m.tick, m.edited ?? false])).toEqual([[0, false], [480, true], [960, false]]);
+    // L'accord du fichier qui reprend après le passage change n'est pas marqué
+    expect(marks[2].chord).toEqual([5, ""]);
+    // Le passage qui suit un accord choisi garde la marque quand il reprend cet accord
+    const again = setChord(marks, at(1440), at(1920), [7, ""]);
+    expect(again.map((m) => [m.tick, m.edited ?? false])).toEqual([[0, false], [480, true], [960, false], [1440, true], [1920, false]]);
+  });
+
   it("récrit les accords dans le texte MIDICSV sans toucher au reste", () => {
     const input = read(SONG);
     // Sans changement, le texte est rendu tel quel, au nom des accords près (« F » devient « Fa »)

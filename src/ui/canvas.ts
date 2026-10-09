@@ -8,6 +8,7 @@ export const colors = {
   note: "#3b6fb6",
   noteOff: "#cdd3dc",
   accent: "#e8590c",
+  edited: "#7c3aed",
   loop: "rgb(59 111 182 / 0.14)", // fond de la boucle
   text: "#1b2028",
   muted: "#5d6673",
@@ -21,6 +22,7 @@ const TOKENS: Record<keyof typeof colors, string> = {
   note: "--note",
   noteOff: "--note-off",
   accent: "--accent",
+  edited: "--edited",
   loop: "--loop",
   text: "--text",
   muted: "--muted",

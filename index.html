@@ -352,7 +352,11 @@
         <section class="song" aria-label="Morceau">
           <div class="song-head">
             <span class="eyebrow">Morceau</span>
-            <span class="hint">Cliquer sur la frise pour se déplacer, sur un accord pour le changer</span>
+            <span class="hint">Cliquer sur la frise pour se déplacer, sur un accord pour le changer (en violet une fois changé)</span>
+            <span class="chord-history">
+              <button id="btn-chord-undo" type="button" disabled title="Annuler le dernier accord changé (Ctrl+Z)">Annuler l'accord</button>
+              <button id="btn-chord-redo" type="button" disabled title="Rétablir l'accord annulé (Ctrl+Y)">Rétablir</button>
+            </span>
           </div>
           <div id="tl-scroll" class="tl-scroll">
             <div id="tl-spacer" class="tl-spacer">
@@ -476,6 +480,10 @@
           <tr>
             <th scope="row"><kbd>Début</kbd></th>
             <td>Retour au début</td>
+          </tr>
+          <tr>
+            <th scope="row"><kbd>Ctrl</kbd> <kbd>Z</kbd> <kbd>Ctrl</kbd> <kbd>Y</kbd></th>
+            <td>Annuler, rétablir un accord changé sur la frise</td>
           </tr>
           <tr>
             <th scope="row"><kbd>Échap</kbd></th>

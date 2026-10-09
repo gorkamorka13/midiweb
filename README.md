@@ -49,23 +49,81 @@ machine.
 - En dessous de 600 px, **Ouvrir** et **Exporter** ne sont plus que dans le menu, et les boutons de
   déplacement ne montrent que leur icône.
 
-### Réglages propres à la version web
+### Section Harmonie
+
+Cette section du panneau des réglages décide de ce qui est joué pour chaque note du fichier : dans
+quelle tonalité, à quelle hauteur, avec quelle note ou quel accord. Tout est modifiable en cours de
+lecture.
+
+**Tonalité et hauteur**
+
+- **Tonalité globale** : la tonalité dans laquelle le morceau est joué, parmi les 24 tonalités
+  majeures et mineures. Elle fixe la grille des accords : chaque note de la gamme reçoit l'accord de
+  son degré. En Do Majeur : Do, Rém, Mim, Fa, Sol, Lam, Si dim ; en La mineur : Lam, Si dim, Do, Rém,
+  Mim, Fa, Sol. La mineur est la valeur de départ.
+- **Tonalité du morceau** : la tonalité du fichier, détectée à l'ouverture (la ligne en dessous dit
+  de combien de demi-tons le morceau est transposé, ou « non transposé »). Si la détection se
+  trompe, en choisir une autre dans la liste. Les notes du fichier sont décalées de cette tonalité
+  vers la **Tonalité globale** : ouvrir un morceau en Ré Majeur et choisir Do Majeur le joue deux
+  demi-tons plus bas, avec les accords de Do Majeur.
+- **Transposition (demi-tons)** : de -12 à +12. Elle change la hauteur entendue sans changer le
+  doigté, comme un capo (valeur positive) ou une guitare accordée plus bas (valeur négative). Le
+  diagramme garde la forme d'origine et indique « capo 2 » ou « accordé -2 demi-tons » ; le nom de la
+  tonalité obtenue est écrit entre parenthèses à côté de la valeur.
+- **Capo auto** : choisit la transposition qui rend au morceau sa hauteur d'origine une fois joué
+  dans la **Tonalité globale** choisie. Par exemple, un morceau en Si mineur joué avec les formes de
+  La mineur demande un capo en case 2. Le bouton n'est actif qu'avec un fichier ouvert ; si la case
+  dépasse la 7, un message invite à choisir une autre tonalité globale.
+- **Frise : formes à jouer** : décide des noms écrits sur la frise. Cochée, ce sont les accords du
+  doigté, sans le capo ni la transposition (ce qu'on a sous les doigts). Décochée, ce sont les noms de
+  ce qu'on entend, transposition comprise.
+- **Notation des notes** : **Do Ré Mi** ou **C D E**, pour tous les noms affichés (accords, notes,
+  tonalités, cordes à vide). Les deux notations sont acceptées en lecture dans les accords écrits.
+
+**Ce qui est joué pour une note**
+
+- **Mode d'accompagnement** :
+  - **Simple Corde** : la note est jouée seule, sur une corde, comme à la guitare (voir la bande
+    Simple Corde plus bas). C'est le mode de départ.
+  - **Accord 6 Cordes** : chaque note du fichier déclenche l'accord de la gamme (ou l'accord lu dans
+    le fichier), strummé sur les six cordes. Les options **Strumming** s'appliquent à ce mode.
+- **Mélodie seule** : quand plusieurs notes commencent ensemble, seule la plus aiguë est gardée, ce
+  qui retire la basse et l'accompagnement du fichier. En Simple Corde, la case est cochée d'office
+  et grisée, puisqu'une seule note peut sonner ; elle retrouve son état au retour en mode Accord.
+- **Une seule note ou un seul accord à la fois** (coché au départ) : une nouvelle note coupe la
+  précédente, ce qui évite que les accords de notes qui se chevauchent sonnent ensemble.
+- **Accord adapté aux notes hors tonalité** : une note étrangère à la gamme reçoit un accord qui
+  la contient (en Do Majeur : Do# -> La, Mib -> Mib, Fa# -> Ré, Sol# -> Mi, Sib -> Sib), au lieu de
+  l'accord de repli (La mineur) de l'application de bureau.
+- **Lisser les accords** (cochée au départ) : parmi les accords lus dans le fichier, ceux de moins
+  de trois quarts de temps qui sont encadrés par le même accord, ou qui commencent entre deux temps,
+  disparaissent (accords de passage portés par la mélodie). Un changement bref sur un temps reste.
+  Les accords écrits dans le fichier ou choisis sur la frise ne sont pas touchés.
+
+### Bande Simple Corde
+
+Sous la frise, une bande dessine une ligne par corde, comme une tablature (la corde 1, la plus
+aiguë, en haut). Elle montre la ligne mélodique du morceau telle que le mode Simple Corde la joue,
+quel que soit le mode choisi : pour chaque note, la corde, le numéro de case et le nom de la note
+entendue (transposition comprise). Elle suit le défilement, l'échelle et la boucle de la frise. Quand
+deux notes sont trop proches, le nom, puis le numéro de case, sont omis pour ne pas se recouvrir.
+
+- Une note est jouée sur la corde la plus aiguë dont la corde à vide ne dépasse pas la note ; la
+  tessiture va du Mi grave à vide à la 12e case de la chanterelle, les notes hors tessiture étant
+  ramenées par octave.
+- Le panneau **Lecture en cours** indique, en mode Simple Corde, la corde et la case jouées.
+- En mode Accord, la ligne Simple Corde sonne en plus des accords, sauf si **Muet (corde)** est
+  cochée, ce qui est le cas au départ. **Muet (accords)** coupe l'inverse : les accords, pas la ligne.
+- Un double clic sur la ligne rouge fait sonner la position choisie : l'accord en mode Accord, avec
+  la note de la ligne si elle dure à cet instant et que **Muet (corde)** est décochée ; la note en
+  mode Simple Corde.
+
+### Autres réglages propres à la version web
 
 - **Accords lus dans le fichier** : quand plusieurs notes sonnent ensemble dans le fichier (toutes
   pistes confondues, cochées ou non), l'accord joué est celui qu'elles forment, majeur, mineur ou
   diminué, amené dans la **Tonalité globale**. Une note qui sonne seule reçoit, comme dans
   l'application de bureau, l'accord que la gamme lui donne.
-- **Tonalité du morceau** : la tonalité détectée est proposée ; si elle est fausse, en choisir une
-  autre dans la liste. Le morceau est transposé de cette tonalité vers la **Tonalité globale**.
-- **Une seule note ou un seul accord à la fois** (coché au départ) : une nouvelle note coupe la
-  précédente, ce qui évite que les accords de notes qui se chevauchent sonnent ensemble.
-- **Mélodie seule** est cochée au départ, contrairement à l'application de bureau.
-- **Accord adapté aux notes hors tonalité** : une note étrangère à la gamme reçoit un accord qui
-  la contient, au lieu de l'accord de repli (La mineur).
-- **Lisser les accords** (cochée au départ) : parmi les accords lus dans le fichier, ceux de moins
-  de trois quarts de temps qui sont encadrés par le même accord, ou qui commencent entre deux temps,
-  disparaissent (accords de passage portés par la mélodie). Un changement bref sur un temps reste.
-  Les accords écrits dans le fichier ou choisis sur la frise ne sont pas touchés.
 - **Boucle** : **A** pose le début et **B** la fin à la position courante ; la lecture répète ce
   passage. **Effacer** retire la boucle.
 
@@ -96,7 +154,9 @@ l'accord écrit suivant ; `auto` rend la main aux accords calculés :
 **Sur la frise**, en mode **Accord 6 Cordes** : cliquer sur le nom d'un accord, choisir sa
 fondamentale et son type, tels qu'on veut les entendre. Le choix vaut jusqu'au changement d'accord
 suivant, et s'entend tout de suite si la lecture est en cours ; **Automatique** revient à l'accord
-calculé. Les accords écrits sont affichés dans la couleur d'accent.
+calculé. Les accords écrits dans le fichier sont affichés dans la couleur d'accent, ceux choisis sur
+la frise en violet. **Annuler l'accord** (ou Ctrl+Z) revient en arrière d'un choix à la fois, et
+**Rétablir** (ou Ctrl+Y) le refait ; l'historique repart à zéro à l'ouverture d'un autre fichier.
 
 **Enregistrer les accords (CSV)...**, dans le menu, télécharge le fichier MIDICSV ouvert avec ses
 lignes `Text_t` d'accords mises à jour ; le reste du fichier est recopié tel quel. Un fichier MIDI
@@ -135,6 +195,7 @@ pas jouée par-dessus le motif, et seul le premier chiffrage de mesure du fichie
 | Espace | Écouter, puis pause et reprise. |
 | ← et → | Reculer et avancer de 5 s. |
 | Début (Home) | Revenir au début. |
+| Ctrl+Z, Ctrl+Y | Annuler, rétablir un accord changé sur la frise. |
 
 Les flèches gardent leur rôle habituel quand un curseur, un champ ou une liste a le focus, et
 Espace actionne le bouton qui a le focus dans la barre. Les raccourcis sont suspendus tant que le

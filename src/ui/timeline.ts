@@ -24,8 +24,9 @@ export interface TimelineModel {
   /**
    * Nom de l'accord ou de la note entendu, pour chaque note jouée, dans l'ordre du temps.
    * `written` : accord écrit dans le fichier ou choisi sur la frise, et non calculé.
+   * `edited` : parmi eux, ceux choisis sur la frise.
    */
-  labels: { start: number; name: string; written?: boolean }[];
+  labels: { start: number; name: string; written?: boolean; edited?: boolean }[];
   /** Mode accord : un nom n'est écrit que s'il diffère du précédent. */
   chords: boolean;
   duration: number;
@@ -52,7 +53,7 @@ export class Timeline {
   private dragSeek = false; // un glissement au doigt déplace la lecture au lieu de faire défiler
   private bars: { x1: number; x2: number; y: number; used: boolean }[] = [];
   private barHeight = 2;
-  private names: { x: number; name: string; start: number; written: boolean }[] = [];
+  private names: { x: number; name: string; start: number; written: boolean; edited: boolean }[] = [];
   private marks: { x: number; label: string }[] = [];
   private sections: { x: number; name: string }[] = [];
   private axisEnd = 0;
@@ -271,14 +272,14 @@ export class Timeline {
     // n'est omis que si l'échelle maximale ne lui laisse pas la place
     let nextFree = 0;
     let last: string | null = null;
-    for (const { start, name, written = false } of model.labels) {
+    for (const { start, name, written = false, edited = false } of model.labels) {
       const x = this.x(start);
       if (model.chords && name === last) continue;
       if (x < nextFree) {
         last = null; // pas la place : l'accord suivant sera affiché même s'il est identique
         continue;
       }
-      this.names.push({ x, name, start, written });
+      this.names.push({ x, name, start, written, edited });
       nextFree = x + this.textWidth(name) + 6;
       last = name;
     }
@@ -344,11 +345,11 @@ export class Timeline {
       text(ctx, x + 4, TL_SECTION_Y, name, colors.muted, FONT_SMALL_BOLD, "left");
     }
 
-    // Un accord écrit se distingue d'un accord calculé par sa couleur
-    for (const { x, name, written } of this.names) {
+    // Un accord écrit se distingue d'un accord calculé par sa couleur, un accord choisi sur la frise par une autre
+    for (const { x, name, written, edited } of this.names) {
       if (x > right) break;
       if (x + this.textWidth(name) < left) continue;
-      text(ctx, x, TL_NAME_Y, name, written ? colors.accent : colors.text, FONT_NAME, "left");
+      text(ctx, x, TL_NAME_Y, name, edited ? colors.edited : written ? colors.accent : colors.text, FONT_NAME, "left");
     }
 
     line(ctx, TL_PAD, bottom + 3, this.axisEnd, bottom + 3, colors.border);
