@@ -43,7 +43,11 @@ export class AudioOutput implements MidiOut {
   private voices = new Map<number, StopFn>(); // hauteur -> arrêt de la note qui sonne
   private nextId = 0;
 
-  constructor(volume = 1.0) {
+  /** Sourdine des accords : le métronome reste audible. */
+  muted: boolean;
+
+  constructor(volume = 1.0, muted = false) {
+    this.muted = muted;
     this.master.gain.value = volume;
     this.master.connect(this.context.destination);
   }
@@ -100,13 +104,26 @@ export class AudioOutput implements MidiOut {
 
   noteOn(pitch: number, velocity: number, time: number): void {
     this.voices.get(pitch)?.(time);
-    if (!this.current) return;
+    if (!this.current || this.muted) return;
     this.voices.set(pitch, this.current.start({ note: pitch, velocity, time, ampRelease: RELEASE, stopId: `n${this.nextId++}` }));
   }
 
   noteOff(pitch: number, time: number): void {
     this.voices.get(pitch)?.(time);
     this.voices.delete(pitch);
+  }
+
+  /** Clic de métronome à l'heure `time` : un bip bref, plus aigu et plus fort sur le premier temps. */
+  click(accent: boolean, time: number): void {
+    const start = Math.max(time, this.context.currentTime);
+    const osc = this.context.createOscillator();
+    const gain = this.context.createGain();
+    osc.frequency.value = accent ? 1600 : 1000;
+    gain.gain.setValueAtTime(accent ? 0.5 : 0.3, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.04);
+    osc.connect(gain).connect(this.master);
+    osc.start(start);
+    osc.stop(start + 0.05);
   }
 
   /**

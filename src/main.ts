@@ -75,6 +75,9 @@ const chkChromatic = $<HTMLInputElement>("chk-chromatic");
 const chkSmooth = $<HTMLInputElement>("chk-smooth");
 const chkHorizontal = $<HTMLInputElement>("chk-horizontal");
 const chkNut = $<HTMLInputElement>("chk-nut");
+const chkMetronome = $<HTMLInputElement>("chk-metronome");
+const chkMuteChords = $<HTMLInputElement>("chk-mute-chords");
+const outBpm = $("out-bpm");
 const cbInstrument = $<HTMLSelectElement>("cb-instrument");
 const cbStyle = $<HTMLSelectElement>("cb-style");
 const spinTempo = $<HTMLInputElement>("spin-tempo");
@@ -291,6 +294,7 @@ function updateStyleControls(): void {
   const style = activeStyle();
   cbStyle.disabled = mode() !== "accord";
   spinTempo.disabled = !style || !inputNotes;
+  showBpm();
   spinStrums.disabled = style !== null;
 }
 
@@ -524,7 +528,7 @@ async function previewCursor(): Promise<void> {
   const here = displayAt(playback ? playback.view().position : cursor);
   if (!here) return;
   try {
-    audio ??= new AudioOutput(volume());
+    audio ??= new AudioOutput(volume(), chkMuteChords.checked);
     await audio.prepare(INSTRUMENTS[cbInstrument.value]);
     const pitches = here.frets.flatMap((fret, string) =>
       fret === null ? [] : [OPEN_STRINGS[string] + fret + here.transpose],
@@ -695,6 +699,7 @@ function openFile(): void {
   cursor = 0.0;
   tempoGrid = null;
   spinTempo.value = String(Math.round(fileBpm));
+  showBpm();
   cbFileKey.value = "";
   fillFileKeys();
   fillTracks();
@@ -729,6 +734,7 @@ function closeFile(): void {
   lblFile.classList.add("muted");
   openFile();
   inputNotes = null;
+  showBpm();
   showPlayer(false);
   lblStatus.textContent = "En attente d'un fichier...";
   drawTimeline();
@@ -764,6 +770,7 @@ function readLiveParams(): LiveParams {
     style: activeStyle(),
     beats: styleBeats(),
     beatsPerBar,
+    metronome: chkMetronome.checked,
   };
 }
 
@@ -798,7 +805,7 @@ async function playAudio(): Promise<void> {
   setButton(btnPlay, "stop", "Arrêter");
   lblStatus.textContent = "Chargement du son...";
   try {
-    audio ??= new AudioOutput(volume());
+    audio ??= new AudioOutput(volume(), chkMuteChords.checked);
     await audio.prepare(INSTRUMENTS[cbInstrument.value]);
     if (request !== playRequest) return; // arrêtée pendant le chargement
     // La lecture part de la position choisie à l'arrêt (du début, si c'est la fin du morceau)
@@ -930,6 +937,8 @@ function readSettings(): Record<string, unknown> {
     mono: chkMono.checked,
     chromatic: chkChromatic.checked,
     smooth: chkSmooth.checked,
+    metronome: chkMetronome.checked,
+    muteChords: chkMuteChords.checked,
     horizontal: chkHorizontal.checked,
     fromNut: chkNut.checked,
     notation: notation(),
@@ -979,6 +988,8 @@ function applySettings(saved: Record<string, unknown>): void {
   check(chkMono, saved.mono);
   check(chkChromatic, saved.chromatic);
   check(chkSmooth, saved.smooth);
+  check(chkMetronome, saved.metronome);
+  check(chkMuteChords, saved.muteChords);
   check(chkHorizontal, saved.horizontal);
   check(chkNut, saved.fromNut);
   if (typeof saved.instrument === "string" && saved.instrument in INSTRUMENTS) cbInstrument.value = saved.instrument;
@@ -1003,8 +1014,16 @@ function restoreSettings(): void {
   applySettings(saved);
 }
 
+/** Tempo entendu : celui du fichier (ou saisi pour le style), multiplié par la vitesse. */
+function showBpm(): void {
+  const typed = Math.trunc(Number(spinTempo.value));
+  const bpm = typed >= Number(spinTempo.min) && typed <= Number(spinTempo.max) ? typed : fileBpm;
+  outBpm.textContent = inputNotes ? `${Math.round(bpm * Number(scaleSpeed.value))} BPM` : "";
+}
+
 /** Valeur des curseurs, écrite à côté. */
 function showSliders(): void {
+  showBpm();
   $("out-speed").textContent = `x${Number(scaleSpeed.value).toFixed(2)}`;
   $("out-strum-speed").textContent = scaleStrumSpeed.value;
   $("out-volume").textContent = `${scaleVolume.value} %`;
@@ -1120,6 +1139,12 @@ function setupUi(): void {
   // La vitesse est sous la frise, hors du panneau des réglages dont les changements sont retenus
   scaleSpeed.addEventListener("change", saveSettings);
   spinStrums.addEventListener("change", saveSettings);
+  chkMetronome.addEventListener("change", saveSettings);
+  chkMuteChords.addEventListener("change", () => {
+    if (audio) audio.muted = chkMuteChords.checked;
+    saveSettings();
+  });
+  spinTempo.addEventListener("input", showBpm);
   $("btn-speed-reset").addEventListener("click", () => {
     scaleSpeed.value = "1";
     showSliders();

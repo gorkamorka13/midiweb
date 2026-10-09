@@ -124,7 +124,7 @@ export class Timeline {
       (event) => {
         if (this.width <= this.viewWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
         event.preventDefault();
-        scroller.scrollLeft += Math.sign(event.deltaY) * (this.viewWidth / 25);
+        scroller.scrollLeft += Math.sign(event.deltaY) * (this.viewWidth / 60);
       },
       { passive: false },
     );

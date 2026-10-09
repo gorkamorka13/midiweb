@@ -28,6 +28,8 @@ export interface LiveParams {
   beats?: readonly number[];
   /** Noires par mesure (4 par défaut). */
   beatsPerBar?: number;
+  /** Un clic sur chaque temps du morceau (le premier de chaque mesure est accentué). */
+  metronome?: boolean;
 }
 
 /** Sortie sonore. `time` est l'heure exacte de l'événement, sur l'horloge donnée à `tick`. */
@@ -35,6 +37,8 @@ export interface MidiOut {
   noteOn(pitch: number, velocity: number, time: number): void;
   noteOff(pitch: number, time: number): void;
   setInstrument(program: number): void;
+  /** Clic de métronome ; `accent` : premier temps de la mesure. */
+  click?(accent: boolean, time: number): void;
 }
 
 /** Dernière frappe, pour l'affichage. */
@@ -375,6 +379,16 @@ export class LivePlayer {
       this.display = null;
     }
     if (this.paused) return true;
+
+    // Métronome : les temps franchis depuis le dernier pas, à leur heure exacte. Après un
+    // déplacement ou un saut de boucle, on ne rattrape rien.
+    if (p.metronome && p.beats && !resync) {
+      const beats = p.beats as number[];
+      for (let i = bisectRight(beats, before); i < beats.length && beats[i] <= srcTime; i++) {
+        const late = (srcTime - beats[i]) / speed;
+        if (late <= LivePlayer.LATE_MAX) this.out.click?.(i % (p.beatsPerBar ?? 4) === 0, now - late);
+      }
+    }
 
     if (style) {
       this.active.clear(); // les coups suivent le motif, pas les notes

@@ -366,10 +366,22 @@
             <!-- Vitesse : sous la main pour ralentir le morceau, sans ouvrir les réglages -->
             <div class="speed">
               <label for="scale-speed" class="field-label">Vitesse</label>
-              <input id="scale-speed" type="range" min="0.5" max="2" step="0.01" value="1" />
+              <input id="scale-speed" type="range" min="0.25" max="2" step="0.05" value="1" />
               <output id="out-speed" for="scale-speed"></output>
               <button id="btn-speed-reset" type="button" title="Revenir à la vitesse du fichier">x1</button>
             </div>
+
+            <!-- Métronome : un clic sur chaque temps du morceau, à la vitesse choisie -->
+            <label class="strums field-label" title="Un clic à chaque temps, le premier de la mesure accentué">
+              <input id="chk-metronome" type="checkbox" />
+              Métronome
+            </label>
+            <output id="out-bpm" class="muted" title="Tempo à la vitesse choisie"></output>
+
+            <label class="strums field-label" title="Coupe le son des accords ; le métronome reste audible">
+              <input id="chk-mute-chords" type="checkbox" />
+              Muet (accords)
+            </label>
 
             <!-- Strums par note : le découpage de chaque note, hors style -->
             <div class="strums">
