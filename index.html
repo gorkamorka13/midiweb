@@ -212,8 +212,15 @@
               <button id="btn-transpose-down" type="button" aria-label="Un demi-ton plus bas">−</button>
               <span id="lbl-transpose"></span>
               <button id="btn-transpose-up" type="button" aria-label="Un demi-ton plus haut">+</button>
+              <button id="btn-capo-auto" type="button" disabled
+                title="Capo qui rend au morceau sa hauteur d'origine dans la tonalité choisie">Capo auto</button>
             </span>
           </div>
+
+          <label class="check">
+            <input id="chk-shapes" type="checkbox" />
+            <span>Frise : formes à jouer <small>Les accords du doigté, sans le capo ni la transposition</small></span>
+          </label>
 
           <div class="field">
             <span id="lbl-mode" class="field-label">Mode d'accompagnement</span>
@@ -350,6 +357,7 @@
           <div id="tl-scroll" class="tl-scroll">
             <div id="tl-spacer" class="tl-spacer">
               <canvas id="cv-timeline" role="img" aria-label="Frise du morceau"></canvas>
+              <canvas id="cv-tab" role="img" aria-label="Partition Simple Corde, synchronisée avec la frise"></canvas>
             </div>
           </div>
 
@@ -381,6 +389,11 @@
             <label class="strums field-label" title="Coupe le son des accords ; le métronome reste audible">
               <input id="chk-mute-chords" type="checkbox" />
               Muet (accords)
+            </label>
+
+            <label class="strums field-label" title="En mode Accord, la ligne Simple Corde de la bande sonne avec les accords, sauf si elle est muette">
+              <input id="chk-mute-line" type="checkbox" checked />
+              Muet (corde)
             </label>
 
             <!-- Strums par note : le découpage de chaque note, hors style -->

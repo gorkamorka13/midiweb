@@ -41,6 +41,7 @@ export class AudioOutput implements MidiOut {
   private current: Instrument | null = null; // instrument des notes frappées à partir de maintenant
   private wanted: number | null = null;
   private voices = new Map<number, StopFn>(); // hauteur -> arrêt de la note qui sonne
+  private lineVoices = new Map<number, StopFn>(); // idem pour la ligne Simple Corde jouée avec les accords
   private nextId = 0;
 
   /** Sourdine des accords : le métronome reste audible. */
@@ -103,14 +104,33 @@ export class AudioOutput implements MidiOut {
   }
 
   noteOn(pitch: number, velocity: number, time: number): void {
-    this.voices.get(pitch)?.(time);
-    if (!this.current || this.muted) return;
-    this.voices.set(pitch, this.current.start({ note: pitch, velocity, time, ampRelease: RELEASE, stopId: `n${this.nextId++}` }));
+    this.start(this.voices, pitch, velocity, time, this.muted);
   }
 
   noteOff(pitch: number, time: number): void {
-    this.voices.get(pitch)?.(time);
-    this.voices.delete(pitch);
+    this.stop(this.voices, pitch, time);
+  }
+
+  /**
+   * Voie de la ligne Simple Corde, jouée en plus des accords : ses notes ne coupent pas celles des
+   * accords (même hauteur) et la sourdine des accords ne la touche pas. Elle garde l'instrument
+   * choisi par le moteur principal.
+   */
+  readonly line: MidiOut = {
+    noteOn: (pitch, velocity, time) => this.start(this.lineVoices, pitch, velocity, time, false),
+    noteOff: (pitch, time) => this.stop(this.lineVoices, pitch, time),
+    setInstrument: () => {},
+  };
+
+  private start(voices: Map<number, StopFn>, pitch: number, velocity: number, time: number, muted: boolean): void {
+    voices.get(pitch)?.(time);
+    if (!this.current || muted) return;
+    voices.set(pitch, this.current.start({ note: pitch, velocity, time, ampRelease: RELEASE, stopId: `n${this.nextId++}` }));
+  }
+
+  private stop(voices: Map<number, StopFn>, pitch: number, time: number): void {
+    voices.get(pitch)?.(time);
+    voices.delete(pitch);
   }
 
   /** Clic de métronome à l'heure `time` : un bip bref, plus aigu et plus fort sur le premier temps. */
@@ -124,6 +144,13 @@ export class AudioOutput implements MidiOut {
     osc.connect(gain).connect(this.master);
     osc.start(start);
     osc.stop(start + 0.05);
+  }
+
+  /** Joue tout de suite une note de la ligne Simple Corde, sans la sourdine des accords. */
+  pluckLine(pitch: number, velocity: number, hold: number): void {
+    const start = this.context.currentTime + 0.02;
+    this.line.noteOn(pitch, velocity, start);
+    this.line.noteOff(pitch, start + hold);
   }
 
   /**
@@ -168,6 +195,10 @@ export interface PlaybackView {
  */
 export class Playback {
   private readonly player: LivePlayer;
+  // Ligne Simple Corde jouée avec les accords : un second moteur sur la même horloge, qui ne
+  // tourne que si `wantLine` le demande
+  private readonly line: LivePlayer;
+  private lineOn = false;
   private readonly worker = tickWorker();
   private history: { time: number; position: number; display: Display | null }[] = [];
   private endTime: number | null = null;
@@ -178,12 +209,23 @@ export class Playback {
    */
   constructor(
     notes: Note[],
-    getParams: () => LiveParams,
+    private readonly getParams: () => LiveParams,
     private readonly audio: AudioOutput,
     private readonly position: number,
     duration: number,
+    /** La ligne Simple Corde doit-elle sonner en plus des accords ? */
+    private readonly wantLine: () => boolean = () => false,
   ) {
-    this.player = new LivePlayer(notes, getParams, audio, this.engineTime(), duration);
+    const start = this.engineTime();
+    this.player = new LivePlayer(notes, getParams, audio, start, duration);
+    this.line = new LivePlayer(
+      notes,
+      () => ({ ...getParams(), mode: "corde", melody: true, mono: true, style: null, metronome: false }),
+      audio.line,
+      start,
+      duration,
+    );
+    this.line.pause(start);
     if (position > 0) this.player.seekTo(position);
     this.worker.onmessage = () => this.step();
     this.step();
@@ -197,24 +239,47 @@ export class Playback {
     if (this.player.finished) return;
     const now = this.engineTime();
     const alive = this.player.tick(now);
+    this.stepLine(now);
     this.history.push({ time: now, position: this.player.position, display: this.player.display });
     if (!alive) {
+      this.line.stop(now);
       this.endTime = now;
       this.worker.terminate();
     }
   }
 
+  /**
+   * La ligne Simple Corde suit le moteur principal : elle ne joue que si on la demande, en mode
+   * accord et hors pause ; à chaque reprise elle repart de la position du moteur principal.
+   */
+  private stepLine(now: number): void {
+    const wanted = this.wantLine() && this.getParams().mode === "accord" && !this.player.paused;
+    if (wanted !== this.lineOn) {
+      this.lineOn = wanted;
+      if (wanted) {
+        this.line.seekTo(this.player.position);
+        this.line.resume(now);
+      } else {
+        this.line.pause(now);
+      }
+    }
+    if (this.lineOn) this.line.tick(now);
+  }
+
   seek(delta: number): void {
     this.player.seek(delta);
+    if (this.lineOn) this.line.seek(delta);
   }
 
   seekTo(position: number): void {
     this.player.seekTo(position);
+    if (this.lineOn) this.line.seekTo(position);
   }
 
   /** Change les notes jouées (choix des pistes) sans interrompre la lecture. */
   setNotes(notes: Note[]): void {
     this.player.setNotes(notes);
+    this.line.setNotes(notes);
   }
 
   get paused(): boolean {
@@ -227,6 +292,8 @@ export class Playback {
     const heard = this.view();
     const now = this.audio.context.currentTime;
     this.player.pause(now);
+    this.line.pause(now);
+    this.lineOn = false;
     // Le moteur avait de l'avance : l'écran garde la dernière frappe réellement entendue
     this.player.display = heard.display;
     this.history = [{ time: now, position: this.player.position, display: heard.display }];
@@ -239,7 +306,9 @@ export class Playback {
   /** Arrête la lecture et coupe tout de suite les notes en cours (et celles déjà programmées). */
   stop(): void {
     this.worker.terminate();
-    this.player.stop(this.audio.context.currentTime);
+    const now = this.audio.context.currentTime;
+    this.player.stop(now);
+    this.line.stop(now);
   }
 
   view(): PlaybackView {
@@ -247,7 +316,7 @@ export class Playback {
     const history = this.history;
     while (history.length > 1 && history[1].time <= now) history.shift();
     const heard = history.length && history[0].time <= now ? history[0] : null;
-    const hits = [this.player.stringHits, this.player.previousStringHits];
+    const hits = [this.player.stringHits, this.player.previousStringHits, this.line.stringHits, this.line.previousStringHits];
     return {
       position: heard ? heard.position : this.position,
       display: heard ? heard.display : null,

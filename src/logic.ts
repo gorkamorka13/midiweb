@@ -501,6 +501,27 @@ export function strumLayout(
   return [chordName, [[string, pitch - OPEN_STRINGS[string], pitch + transpose]]];
 }
 
+/** Note de la ligne Simple Corde : la corde (0 = la plus grave) et la case où elle se joue. */
+export interface TabNote {
+  start: number;
+  duration: number;
+  string: number;
+  fret: number;
+  /** Hauteur MIDI jouée (corde à vide + case), sans la transposition. */
+  pitch: number;
+}
+
+/**
+ * Ligne Simple Corde d'un morceau : la note la plus aiguë de chaque groupe de notes simultanées,
+ * avec la corde et la case où le mode Simple Corde la joue (indépendamment du mode choisi).
+ */
+export function tabNotes(notes: Note[], harmony: Record<number, string>, keyShift = 0): TabNote[] {
+  return keepHighestNotes(notes).map((note) => {
+    const [, [[string, fret, pitch]]] = strumLayout(note, "corde", harmony, 0, keyShift);
+    return { start: note.start, duration: note.duration, string, fret, pitch };
+  });
+}
+
 /**
  * Délai entre deux cordes (s). Le balayage doit tenir dans la moitié du strum,
  * sinon les strums se chevauchent.

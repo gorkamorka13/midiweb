@@ -1,5 +1,7 @@
-import type { Note } from "../logic";
+import type { Notation } from "../guitar";
+import type { Note, TabNote } from "../logic";
 import { FONT_NAME, FONT_SMALL, FONT_SMALL_BOLD, colors, line, prepare, text } from "./canvas";
+import { TAB_H, TabLane } from "./tabs";
 
 const TL_H = 190;
 const TL_TOP = 42; // sous les noms
@@ -56,6 +58,7 @@ export class Timeline {
   private axisEnd = 0;
   private measure = document.createElement("canvas").getContext("2d")!;
   private widths = new Map<string, number>();
+  private readonly lane: TabLane | null;
 
   constructor(
     private readonly scroller: HTMLElement,
@@ -66,57 +69,63 @@ export class Timeline {
     onName: (start: number) => void,
     /** Double clic sur la ligne rouge : jouer ce qu'elle désigne. */
     onPlayheadDouble: () => void = () => {},
+    /** Bande Simple Corde sous la frise (même défilement, même échelle) : son canevas. */
+    tabCanvas?: HTMLCanvasElement,
   ) {
     this.measure.font = FONT_NAME; // largeur des noms ; celle des repères de l'axe est surestimée, sans gêne
-    this.spacer.style.height = `${TL_H}px`;
+    this.lane = tabCanvas ? new TabLane(tabCanvas) : null;
+    this.spacer.style.height = `${TL_H + (tabCanvas ? TAB_H : 0)}px`;
 
+    // `offsetX` compte depuis le bord gauche du canevas touché ; les deux sont alignés sur celui de la fenêtre
     const seek = (event: PointerEvent) => onSeek((scroller.scrollLeft + event.offsetX - TL_PAD) / this.scale);
     let tap = false; // doigt posé à l'arrêt : un simple toucher place la lecture, un glissement fait défiler
     let pressed: number | null = null; // nom d'accord sur lequel le bouton de la souris a été enfoncé
-    canvas.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      if (event.pointerType !== "mouse" && !this.dragSeek) {
-        tap = true;
-        return;
-      }
-      pressed = this.nameAt(event);
-      if (pressed !== null) return; // le clic sur un accord le modifie, sans déplacer la lecture
-      canvas.setPointerCapture(event.pointerId);
-      if (event.pointerType === "mouse" && !this.dragSeek && !this.onPlayhead(event)) {
-        // souris : saisir la partition ailleurs que sur la ligne rouge la fait glisser
-        this.pan = { x: event.clientX, scroll: scroller.scrollLeft, moved: false };
-        scroller.classList.add("panning");
-        return;
-      }
-      this.held = true;
-      seek(event);
-    });
-    canvas.addEventListener("pointermove", (event) => {
-      if (this.held) seek(event);
-      else if (this.pan) {
-        const dx = event.clientX - this.pan.x;
-        if (Math.abs(dx) > TL_PAN_THRESHOLD) this.pan.moved = true;
-        if (this.pan.moved) scroller.scrollLeft = this.pan.scroll - dx;
-      } else if (event.pointerType === "mouse") {
-        canvas.style.cursor = this.onPlayhead(event) ? "ew-resize" : "grab";
-      }
-    });
-    const release = (event: PointerEvent, cancelled: boolean) => {
-      const name = cancelled ? null : this.nameAt(event);
-      if (name !== null && (tap || name === pressed)) onName(name);
-      else if (!cancelled && tap) seek(event);
-      else if (!cancelled && this.pan && !this.pan.moved) seek(event); // simple clic : place la lecture
-      tap = this.held = false;
-      this.pan = null;
-      pressed = null;
-      scroller.classList.remove("panning");
-    };
-    canvas.addEventListener("pointerup", (event) => release(event, false));
-    canvas.addEventListener("pointercancel", (event) => release(event, true));
+    for (const target of tabCanvas ? [canvas, tabCanvas] : [canvas]) {
+      target.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        if (event.pointerType !== "mouse" && !this.dragSeek) {
+          tap = true;
+          return;
+        }
+        pressed = this.nameAt(event);
+        if (pressed !== null) return; // le clic sur un accord le modifie, sans déplacer la lecture
+        target.setPointerCapture(event.pointerId);
+        if (event.pointerType === "mouse" && !this.dragSeek && !this.onPlayhead(event)) {
+          // souris : saisir la partition ailleurs que sur la ligne rouge la fait glisser
+          this.pan = { x: event.clientX, scroll: scroller.scrollLeft, moved: false };
+          scroller.classList.add("panning");
+          return;
+        }
+        this.held = true;
+        seek(event);
+      });
+      target.addEventListener("pointermove", (event) => {
+        if (this.held) seek(event);
+        else if (this.pan) {
+          const dx = event.clientX - this.pan.x;
+          if (Math.abs(dx) > TL_PAN_THRESHOLD) this.pan.moved = true;
+          if (this.pan.moved) scroller.scrollLeft = this.pan.scroll - dx;
+        } else if (event.pointerType === "mouse") {
+          target.style.cursor = this.onPlayhead(event) ? "ew-resize" : "grab";
+        }
+      });
+      const release = (event: PointerEvent, cancelled: boolean) => {
+        const name = cancelled ? null : this.nameAt(event);
+        if (name !== null && (tap || name === pressed)) onName(name);
+        else if (!cancelled && tap) seek(event);
+        else if (!cancelled && this.pan && !this.pan.moved) seek(event); // simple clic : place la lecture
+        tap = this.held = false;
+        this.pan = null;
+        pressed = null;
+        scroller.classList.remove("panning");
+      };
+      target.addEventListener("pointerup", (event) => release(event, false));
+      target.addEventListener("pointercancel", (event) => release(event, true));
 
-    canvas.addEventListener("dblclick", (event) => {
-      if (this.onPlayhead(event)) onPlayheadDouble();
-    });
+      target.addEventListener("dblclick", (event) => {
+        if (this.onPlayhead(event)) onPlayheadDouble();
+      });
+    }
 
     // La molette fait défiler la frise, quand elle dépasse de la fenêtre
     scroller.addEventListener(
@@ -153,7 +162,7 @@ export class Timeline {
 
   /** Début (s) de l'accord dont le nom est sous le pointeur, en mode accord ; null ailleurs. */
   private nameAt(event: PointerEvent): number | null {
-    if (!this.model?.chords || event.offsetY < TL_NAME_TOP || event.offsetY > TL_NAME_BOTTOM) return null;
+    if (event.target !== this.canvas || !this.model?.chords || event.offsetY < TL_NAME_TOP || event.offsetY > TL_NAME_BOTTOM) return null;
     const x = this.scroller.scrollLeft + event.offsetX;
     const hit = this.names.find((n) => x >= n.x - 3 && x <= n.x + this.textWidth(n.name) + 3);
     return hit ? hit.start : null;
@@ -175,6 +184,11 @@ export class Timeline {
   setModel(model: TimelineModel | null): void {
     this.model = model;
     this.layout();
+  }
+
+  /** Notes de la bande Simple Corde. */
+  setTab(notes: TabNote[], notation?: Notation, transpose?: number): void {
+    this.lane?.setNotes(notes, notation, transpose);
   }
 
   scrollToStart(): void {
@@ -290,6 +304,13 @@ export class Timeline {
   /** Dessine la partie visible de la frise. */
   private render(): void {
     const ctx = prepare(this.canvas, this.viewWidth, TL_H);
+    this.lane?.render({
+      left: this.scroller.scrollLeft,
+      width: this.viewWidth,
+      x: (seconds) => this.x(seconds),
+      playhead: this.model ? this.playhead : null,
+      loop: this.loopStart !== null && this.loopEnd !== null ? [this.loopStart, this.loopEnd] : null,
+    });
     if (!this.model) {
       text(ctx, this.viewWidth / 2, TL_H / 2, "Aucun fichier chargé", colors.muted, FONT_SMALL);
       return;

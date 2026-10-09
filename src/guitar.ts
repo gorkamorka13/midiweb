@@ -102,6 +102,7 @@ export const GUITAR_LOW = 40;
 export const GUITAR_HIGH = 76;
 export const MAX_STRUMS = 16;
 export const MAX_TRANSPOSE = 12; // transposition maximale, en demi-tons, dans chaque sens
+export const MAX_CAPO = 7; // case la plus haute proposée par « Capo auto »
 export const GATE_RATIO = 0.85; // part du strum pendant laquelle les cordes sonnent
 export const SEEK_STEP = 5.0; // saut des boutons retour / avance (secondes du fichier source)
 
@@ -245,4 +246,14 @@ export function shiftToKey(fileKey: Key, scaleKey: string): number {
   if (fileQuality !== quality) root += quality === "mineur" ? 3 : -3;
   const shift = mod(root - fileRoot, 12);
   return shift > 6 ? shift - 12 : shift;
+}
+
+/**
+ * Case du capo qui rend au morceau sa hauteur d'origine une fois joué dans la tonalité choisie
+ * (`keyShift` : le décalage de `shiftToKey`), ou null si elle dépasse MAX_CAPO. Un décalage de -2
+ * (Si mineur joué en La mineur) donne la case 2.
+ */
+export function autoCapo(keyShift: number): number | null {
+  const fret = mod(-keyShift, 12);
+  return fret <= MAX_CAPO ? fret : null;
 }

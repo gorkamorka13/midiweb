@@ -16,6 +16,7 @@ import {
   SCALES,
   SCALE_ROOTS,
   SEEK_STEP,
+  autoCapo,
   harmonyMap,
   keyName,
   mod,
@@ -42,11 +43,13 @@ import {
   smoothChords,
   strumLayout,
   sweepDelay,
+  tabNotes,
   uniformBeats,
   type ChordMark,
   type Marker,
   type MidiInput,
   type Note,
+  type TabNote,
   type Part,
 } from "./logic";
 import { MIDICSV_EXTENSIONS, writeMidicsvChords } from "./midicsv";
@@ -73,10 +76,13 @@ const chkMelody = $<HTMLInputElement>("chk-melody");
 const chkMono = $<HTMLInputElement>("chk-mono");
 const chkChromatic = $<HTMLInputElement>("chk-chromatic");
 const chkSmooth = $<HTMLInputElement>("chk-smooth");
+const chkShapes = $<HTMLInputElement>("chk-shapes");
+const btnCapoAuto = $<HTMLButtonElement>("btn-capo-auto");
 const chkHorizontal = $<HTMLInputElement>("chk-horizontal");
 const chkNut = $<HTMLInputElement>("chk-nut");
 const chkMetronome = $<HTMLInputElement>("chk-metronome");
 const chkMuteChords = $<HTMLInputElement>("chk-mute-chords");
+const chkMuteLine = $<HTMLInputElement>("chk-mute-line");
 const outBpm = $("out-bpm");
 const cbInstrument = $<HTMLSelectElement>("cb-instrument");
 const cbStyle = $<HTMLSelectElement>("cb-style");
@@ -158,6 +164,7 @@ const timeline = new Timeline(
   (seconds) => seekTo(seconds, false),
   (start) => editChord(start),
   () => void previewCursor(),
+  $<HTMLCanvasElement>("cv-tab"),
 );
 
 function checked(name: string): string {
@@ -206,6 +213,24 @@ function changeTranspose(delta: number): void {
   saveSettings();
 }
 
+/** Capo qui rend au morceau sa hauteur d'origine dans la tonalité choisie. */
+function applyAutoCapo(): void {
+  const fret = autoCapo(keyShift());
+  if (fret === null) {
+    showMessage(
+      "Capo auto",
+      `Il faudrait un capo en case ${mod(-keyShift(), 12)}, au-delà de la case 7. Choisissez une autre tonalité globale.`,
+    );
+    return;
+  }
+  transpose = fret;
+  onHarmonyChange();
+  saveSettings();
+}
+
+/** Transposition des noms affichés sur la frise : aucune quand la frise montre les formes à jouer. */
+const shownTranspose = () => (chkShapes.checked ? 0 : transpose);
+
 /** Tonalité du morceau : celle qui a été détectée, sauf si une autre est choisie dans la liste. */
 function fileKey(): Key | null {
   if (detectedKey === null) return null;
@@ -214,7 +239,7 @@ function fileKey(): Key | null {
 
 function updateTransposeLabel(): void {
   const level = transpose ? signed(transpose) : "0";
-  lblTranspose.textContent = `${level}  (${transposedKeyName(scaleKey(), transpose, notation())})`;
+  lblTranspose.textContent = `${level}  (${transposedKeyName(scaleKey(), shownTranspose(), notation())})`;
 }
 
 /** Demi-tons ajoutés aux notes du fichier pour le jouer dans la tonalité choisie. */
@@ -244,6 +269,7 @@ function fillFileKeys(): void {
   );
   cbFileKey.value = selected;
   cbFileKey.disabled = detectedKey === null;
+  btnCapoAuto.disabled = detectedKey === null;
 }
 
 function onHarmonyChange(): void {
@@ -293,6 +319,7 @@ function styleBeats(): readonly number[] {
 function updateStyleControls(): void {
   const style = activeStyle();
   cbStyle.disabled = mode() !== "accord";
+  chkMuteLine.disabled = mode() !== "accord"; // en Simple Corde, la ligne est déjà ce qui sonne
   spinTempo.disabled = !style || !inputNotes;
   showBpm();
   spinStrums.disabled = style !== null;
@@ -372,6 +399,7 @@ function setTracks(enabled: Part[]): void {
 function drawTimeline(): void {
   if (!inputNotes) {
     timeline.setModel(null);
+    timeline.setTab([]);
     return;
   }
   const used = chkMelody.checked ? keepHighestNotes(inputNotes) : inputNotes;
@@ -387,13 +415,14 @@ function drawTimeline(): void {
     const pitch = n.pitch + shift;
     const chord: string | undefined = chords ? chordNameOf(n, harmony, shift) : harmony[mod(pitch, 12)];
     const name = chord
-      ? transposedChordName(chord, transpose, notation())
-      : noteName(pitch + transpose, notation());
+      ? transposedChordName(chord, shownTranspose(), notation())
+      : noteName(pitch + shownTranspose(), notation());
     while (mark < chordMarks.length && chordMarks[mark].seconds <= n.start + 1e-9) mark++;
     const written = chords && mark > 0 && chordMarks[mark - 1].chord !== null;
     return { start: n.start, name, written, chord: chord ?? "", tick: n.tick };
   });
   chordLabels = chords ? labels : [];
+  timeline.setTab(tabNotes(inputNotes, harmony, shift), notation(), shownTranspose());
   // Les notes des pistes décochées restent dessinées, grisées
   timeline.setModel({
     notes: fileNotes, used: new Set(used), labels, chords, duration: songDuration,
@@ -441,7 +470,7 @@ function editChord(start: number): void {
   const next = chordLabels.slice(index + 1).find((l) => l.name !== label.name && l.tick !== undefined);
   const [, root, suffix] = CHORDS[label.chord];
   cbChordRoot.replaceChildren(...Array.from({ length: 12 }, (_, i) => new Option(noteName(i, notation()), String(i))));
-  cbChordRoot.value = String(mod(root + transpose, 12));
+  cbChordRoot.value = String(mod(root + shownTranspose(), 12));
   cbChordSuffix.value = suffix;
   $("dlg-chord-text").textContent = next
     ? `De ${formatTime(label.start)} à ${formatTime(next.start)}.`
@@ -454,7 +483,7 @@ function editChord(start: number): void {
     () => {
       const choice = chordDialog.returnValue;
       if ((choice !== "ok" && choice !== "auto") || request !== fileRequest) return; // annulé, ou autre fichier déposé
-      const picked = [mod(Number(cbChordRoot.value) - transpose - keyShift(), 12), cbChordSuffix.value] as const;
+      const picked = [mod(Number(cbChordRoot.value) - shownTranspose() - keyShift(), 12), cbChordSuffix.value] as const;
       const from = { tick: label.tick!, seconds: label.start };
       const to = next ? { tick: next.tick!, seconds: next.start } : null;
       setChordMarks(setChord(chordMarks, from, to, choice === "ok" ? picked : null));
@@ -477,19 +506,23 @@ function updateNowPlaying(view: PlaybackView): void {
   let modeName: string;
   let shape = "";
   let stroke = "";
+  // « Formes à jouer » : les noms restent ceux du doigté, le son reste transposé
+  const shown = shownTranspose();
   if (d.mode === "accord") {
-    title = transposedChordName(d.chord, t, notation());
+    title = transposedChordName(d.chord, shown, notation());
     modeName = "Accord 6 cordes";
-    shape = `forme ${transposedChordName(d.chord, 0, notation())}`;
+    shape = shown ? `forme ${transposedChordName(d.chord, 0, notation())}` : "";
     stroke = d.up ? "↑ coup vers le haut" : "↓ coup vers le bas";
   } else {
-    title = noteName(d.pitch, notation());
-    modeName = "Simple corde";
+    title = noteName(d.pitch - t + shown, notation());
+    // La corde jouée, numérotée comme sur la bande (1 = la plus aiguë)
+    const string = d.frets.findIndex((f) => f !== null);
+    modeName = string < 0 ? "Simple corde" : `Simple corde : corde ${OPEN_STRINGS.length - string}, case ${d.frets[string]}`;
   }
   // Transposé, le doigté affiché reste celui de la forme d'origine : capo vers l'aigu,
   // guitare accordée plus bas vers le grave
   const shift = t > 0 ? `capo ${t}` : t < 0 ? `accordé ${t} demi-tons` : "";
-  const detail = [t ? shape : "", shift].filter(Boolean).join(", ");
+  const detail = [shape, shift].filter(Boolean).join(", ");
   lblChord.textContent = title;
   lblChordSub.textContent = `${modeName}\n${detail}`;
   lblStroke.textContent = stroke;
@@ -517,6 +550,14 @@ function displayAt(seconds: number): Display | null {
   return { mode: p.mode, chord, frets, up: false, transpose: p.transpose, pitch: layout[0][2] };
 }
 
+/** Note de la ligne Simple Corde qui dure à `seconds` (sans la transposition), ou null. */
+function lineNoteAt(seconds: number): TabNote | null {
+  if (!inputNotes) return null;
+  const p = readLiveParams();
+  const tab = tabNotes(inputNotes, harmonyMap(p.scale, p.chromatic), p.keyShift);
+  return tab.find((n) => n.start <= seconds && seconds < n.start + n.duration) ?? null;
+}
+
 /** À l'arrêt : montre ce qui sonnerait à la position choisie, avec les réglages en cours. */
 function showCursorChord(): void {
   updateNowPlaying({ position: cursor, display: displayAt(cursor), lit: [], finished: false });
@@ -525,7 +566,8 @@ function showCursorChord(): void {
 /** Double clic sur la ligne rouge : fait sonner l'accord ou la note de la position choisie. */
 async function previewCursor(): Promise<void> {
   if (!inputNotes || starting || (playback && !playback.paused)) return; // en lecture, ça sonne déjà
-  const here = displayAt(playback ? playback.view().position : cursor);
+  const seconds = playback ? playback.view().position : cursor;
+  const here = displayAt(seconds);
   if (!here) return;
   try {
     audio ??= new AudioOutput(volume(), chkMuteChords.checked);
@@ -535,6 +577,9 @@ async function previewCursor(): Promise<void> {
     );
     const hold = here.mode === "accord" ? 1.2 : 0.8;
     audio.strum(pitches, 95, sweepDelay(Number(scaleStrumSpeed.value), pitches.length, hold), hold);
+    // Avec un accord, la ligne Simple Corde sonne aussi tant que sa note dure, sauf si elle est muette
+    const line = here.mode === "accord" && !chkMuteLine.checked ? lineNoteAt(seconds) : null;
+    if (line) audio.pluckLine(line.pitch + here.transpose, 95, hold);
   } catch (e) {
     showMessage("Erreur Audio", `Échec de la lecture audio : ${errorText(e)}`);
   }
@@ -809,7 +854,10 @@ async function playAudio(): Promise<void> {
     await audio.prepare(INSTRUMENTS[cbInstrument.value]);
     if (request !== playRequest) return; // arrêtée pendant le chargement
     // La lecture part de la position choisie à l'arrêt (du début, si c'est la fin du morceau)
-    playback = new Playback(inputNotes, readLiveParams, audio, cursor < songDuration ? cursor : 0.0, songDuration);
+    playback = new Playback(
+      inputNotes, readLiveParams, audio, cursor < songDuration ? cursor : 0.0, songDuration,
+      () => !chkMuteLine.checked,
+    );
   } catch (e) {
     if (request !== playRequest) return;
     starting = false;
@@ -937,8 +985,10 @@ function readSettings(): Record<string, unknown> {
     mono: chkMono.checked,
     chromatic: chkChromatic.checked,
     smooth: chkSmooth.checked,
+    shapes: chkShapes.checked,
     metronome: chkMetronome.checked,
     muteChords: chkMuteChords.checked,
+    muteLine: chkMuteLine.checked,
     horizontal: chkHorizontal.checked,
     fromNut: chkNut.checked,
     notation: notation(),
@@ -988,8 +1038,10 @@ function applySettings(saved: Record<string, unknown>): void {
   check(chkMono, saved.mono);
   check(chkChromatic, saved.chromatic);
   check(chkSmooth, saved.smooth);
+  check(chkShapes, saved.shapes);
   check(chkMetronome, saved.metronome);
   check(chkMuteChords, saved.muteChords);
+  check(chkMuteLine, saved.muteLine);
   check(chkHorizontal, saved.horizontal);
   check(chkNut, saved.fromNut);
   if (typeof saved.instrument === "string" && saved.instrument in INSTRUMENTS) cbInstrument.value = saved.instrument;
@@ -1111,6 +1163,8 @@ function setupUi(): void {
   cbFileKey.addEventListener("change", onHarmonyChange);
   cbStyle.addEventListener("change", updateStyleControls);
   chkChromatic.addEventListener("change", drawTimeline);
+  chkShapes.addEventListener("change", onHarmonyChange);
+  btnCapoAuto.addEventListener("click", applyAutoCapo);
   chkSmooth.addEventListener("change", onSmoothChange);
   for (const chk of [chkHorizontal, chkNut]) {
     chk.addEventListener("change", () => {
@@ -1144,6 +1198,7 @@ function setupUi(): void {
     if (audio) audio.muted = chkMuteChords.checked;
     saveSettings();
   });
+  chkMuteLine.addEventListener("change", saveSettings); // le moteur relit la case à chaque pas
   spinTempo.addEventListener("input", showBpm);
   $("btn-speed-reset").addEventListener("click", () => {
     scaleSpeed.value = "1";

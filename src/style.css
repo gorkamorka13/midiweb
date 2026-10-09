@@ -475,6 +475,13 @@ input[type="checkbox"] {
   font-size: 16px;
 }
 
+.transpose #btn-capo-auto {
+  width: auto;
+  padding: 0 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 #lbl-transpose {
   flex: 1;
   text-align: center;
@@ -718,7 +725,8 @@ body.dropping .stage {
   touch-action: none;
 }
 
-.tl-scroll.panning #cv-timeline {
+.tl-scroll.panning #cv-timeline,
+.tl-scroll.panning #cv-tab {
   cursor: grabbing !important;
 }
 
@@ -726,10 +734,16 @@ body.dropping .stage {
   min-width: 100%;
 }
 
-#cv-timeline {
+#cv-timeline,
+#cv-tab {
   display: block;
   position: sticky;
   left: 0;
+}
+
+/* Bande Simple Corde : sous la frise, dans le même défilement */
+#cv-tab {
+  border-top: 1px solid var(--border);
 }
 
 .song-controls {
